@@ -1,0 +1,98 @@
+using System.Reflection;
+using NetArchTest.Rules;
+using Shouldly;
+using TacoTuesday.Modules.Candidates;
+using TacoTuesday.Modules.Companies;
+
+namespace TacoTuesday.ArchitectureTests;
+
+public sealed class ModuleBoundaryTests
+{
+    private static readonly Assembly CandidatesAssembly = typeof(CandidatesModule).Assembly;
+    private static readonly Assembly CompaniesAssembly  = typeof(CompaniesModule).Assembly;
+
+    private const string CandidatesRoot = "TacoTuesday.Modules.Candidates";
+    private const string CompaniesRoot  = "TacoTuesday.Modules.Companies";
+
+    /// <summary>Internals of a module are off-limits. Contracts are not.</summary>
+    private static string[] InternalNamespacesOf(string moduleRoot) =>
+    [
+        $"{moduleRoot}.Domain",
+        $"{moduleRoot}.Features",
+        $"{moduleRoot}.Persistence"
+    ];
+
+    [Fact]
+    public void Candidates_must_not_reach_into_Companies_internals()
+    {
+        var isTheModuleInRoot = InternalNamespacesOf(CompaniesRoot);
+
+        var result = Types.InAssembly(CandidatesAssembly)
+            .That().ResideInNamespaceStartingWith(CandidatesRoot)
+            .ShouldNot().HaveDependencyOnAny(InternalNamespacesOf(CompaniesRoot))
+            .GetResult();
+
+        result.IsSuccessful.ShouldBeTrue(Explain(result));
+    }
+
+    [Fact]
+    public void Companies_must_not_reach_into_Candidates_internals()
+    {
+        var result = Types.InAssembly(CompaniesAssembly)
+            .That().ResideInNamespaceStartingWith(CompaniesRoot)
+            .ShouldNot().HaveDependencyOnAny(InternalNamespacesOf(CandidatesRoot))
+            .GetResult();
+
+        result.IsSuccessful.ShouldBeTrue(Explain(result));
+    }
+
+    [Fact]
+    public void Modules_must_not_depend_on_the_Api_host()
+    {
+        foreach (var assembly in new[] { CandidatesAssembly, CompaniesAssembly })
+        {
+            var result = Types.InAssembly(assembly)
+                .ShouldNot().HaveDependencyOn("TacoTuesday.Api")
+                .GetResult();
+
+            result.IsSuccessful.ShouldBeTrue(Explain(result));
+        }
+    }
+
+    /// <summary>
+    /// Handlers orchestrate business logic. If one touches HttpContext it has stopped
+    /// being testable in isolation and has started being a controller in disguise.
+    /// </summary>
+    [Fact]
+    public void Handlers_must_not_depend_on_HttpContext()
+    {
+        foreach (var assembly in new[] { CandidatesAssembly, CompaniesAssembly })
+        {
+            var result = Types.InAssembly(assembly)
+                .That().HaveNameEndingWith("Handler")
+                .ShouldNot().HaveDependencyOn("Microsoft.AspNetCore.Http")
+                .GetResult();
+
+            result.IsSuccessful.ShouldBeTrue(Explain(result));
+        }
+    }
+
+    [Fact]
+    public void Endpoints_must_be_sealed_and_named_Endpoint()
+    {
+        foreach (var assembly in new[] { CandidatesAssembly, CompaniesAssembly })
+        {
+            var result = Types.InAssembly(assembly)
+                .That().ImplementInterface(typeof(TacoTuesday.SharedKernel.IEndpoint))
+                .Should().BeSealed().And().HaveNameEndingWith("Endpoint")
+                .GetResult();
+
+            result.IsSuccessful.ShouldBeTrue(Explain(result));
+        }
+    }
+
+    private static string Explain(TestResult result) =>
+        result.IsSuccessful
+            ? string.Empty
+            : "Offending types: " + string.Join(", ", result.FailingTypeNames ?? []);
+}

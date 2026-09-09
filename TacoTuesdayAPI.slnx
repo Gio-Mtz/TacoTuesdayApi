@@ -1,0 +1,16 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/TacoTuesday.Api/TacoTuesday.Api.csproj" />
+    <Project Path="src/TacoTuesday.Infrastructure/TacoTuesday.Infrastructure.csproj" />
+    <Project Path="src/TacoTuesday.SharedKernel/TacoTuesday.SharedKernel.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/">
+    <Project Path="src/Modules/TacoTuesday.Modules.Candidates/TacoTuesday.Modules.Candidates.csproj" />
+    <Project Path="src/Modules/TacoTuesday.Modules.Companies/TacoTuesday.Modules.Companies.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/TacoTuesday.ArchitectureTests/TacoTuesday.ArchitectureTests.csproj" />
+    <Project Path="tests/TacoTuesday.IntegrationTests/TacoTuesday.IntegrationTests.csproj" />
+    <Project Path="tests/TacoTuesday.UnitTests/TacoTuesday.UnitTests.csproj" />
+  </Folder>
+</Solution>
