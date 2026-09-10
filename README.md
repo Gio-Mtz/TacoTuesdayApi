@@ -3,6 +3,25 @@
 The backend for Taco Tuesday Consulting. A **modular monolith** in .NET 10.
 The Angular frontend lives in a separate repository: [TacoTuesdayUI](https://github.com/Gio-Mtz/TacoTuesdayUI).
 
+## Docker
+
+### Build the image
+```bash
+docker build -t tacotuesday-api .
+```
+
+### Run the container
+```bash
+docker run -p 8080:8080 tacotuesday-api
+```
+
+The API will be available at `http://localhost:8080`.
+
+### Run with env file (for settings)
+```bash
+docker run -p 8080:8080 --env-file .env.local tacotuesday-api
+```
+
 ## Run it
 
 ```bash
