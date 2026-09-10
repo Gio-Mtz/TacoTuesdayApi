@@ -1,7 +1,7 @@
 # Taco Tuesday — API
 
 The backend for Taco Tuesday Consulting. A **modular monolith** in .NET 10.
-The Angular frontend lives in a separate repository: `tacotuesday-ui`.
+The Angular frontend lives in a separate repository: [TacoTuesdayUI](https://github.com/Gio-Mtz/TacoTuesdayUI).
 
 ## Run it
 
@@ -37,4 +37,5 @@ dotnet test
 3. Nothing references `TacoTuesday.Api`.
 4. `dotnet test` enforces 1–3. If it's red, the rule was broken.
 
-Decisions live in the Obsidian vault under `03-Architecture/`.
+Decisions live in [`docs/adr`](docs/adr) — in the repo, so a reader on GitHub can see
+why things are the way they are without access to anything else.
