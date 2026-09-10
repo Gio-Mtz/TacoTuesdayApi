@@ -18,7 +18,10 @@ public readonly record struct Result
 }
 
 /// <summary>A result carrying a value on success.</summary>
-[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1000:Do not declare static members on generic types")]
+[SuppressMessage("Design", "CA1000:Do not declare static members on generic types",
+    Justification = "Static factory methods are the point of the Result pattern. The BCL does the same " +
+                    "(ImmutableArray<T>.Empty, EqualityComparer<T>.Default). The implicit conversion " +
+                    "from T covers the happy path, so callers rarely write the type argument.")]
 public readonly record struct Result<T>
 {
     public ResultStatus Status {get;}
