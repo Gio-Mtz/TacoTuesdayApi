@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Threading.RateLimiting;
 
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
 using TacoTuesday.Infrastructure;
+using TacoTuesday.Migrations.SqlServer;
 using TacoTuesday.Modules.Candidates;
 using TacoTuesday.Modules.Companies;
 using TacoTuesday.Modules.Leads;
@@ -132,14 +133,23 @@ if (!string.IsNullOrWhiteSpace(leadsConnectionString))
 {
     builder.Services.AddLeadsPersistence(options => options.UseSqlServer(
         leadsConnectionString,
-        sql => sql.EnableRetryOnFailure(
-            maxRetryCount: 5,
-            // Azure SQL on the serverless tier pauses when idle and takes a few seconds to
-            // wake up, and the connection that wakes it is the one that gets dropped. Without
-            // this, the first signup after a quiet night fails for no reason the visitor
-            // could have done anything about.
-            maxRetryDelay: TimeSpan.FromSeconds(10),
-            errorNumbersToAdd: null)));
+        sql =>
+        {
+            // The migrations are NOT next to the DbContext. The module is not allowed to name
+            // a provider and a migration is provider-specific by construction, so they live in
+            // their own assembly and the host — the only thing here that knows it is SQL
+            // Server — is what points EF at it. See docs/adr/0006-migrations-assembly.md.
+            sql.MigrationsAssembly(SqlServerMigrations.AssemblyName);
+
+            sql.EnableRetryOnFailure(
+                maxRetryCount: 5,
+                // Azure SQL on the serverless tier pauses when idle and takes a few seconds to
+                // wake up, and the connection that wakes it is the one that gets dropped.
+                // Without this, the first signup after a quiet night fails for no reason the
+                // visitor could have done anything about.
+                maxRetryDelay: TimeSpan.FromSeconds(10),
+                errorNumbersToAdd: null);
+        }));
 }
 
 var app = builder.Build();

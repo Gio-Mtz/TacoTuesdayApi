@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace TacoTuesday.Modules.Leads.Persistence.Migrations
+namespace TacoTuesday.Migrations.SqlServer.Leads
 {
     /// <inheritdoc />
     public partial class InitialLeads : Migration

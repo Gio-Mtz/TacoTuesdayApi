@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <ItemGroup>
     <ProjectReference Include="..\TacoTuesday.SharedKernel\TacoTuesday.SharedKernel.csproj" />
@@ -6,6 +6,9 @@
     <ProjectReference Include="..\Modules\TacoTuesday.Modules.Candidates\TacoTuesday.Modules.Candidates.csproj" />
     <ProjectReference Include="..\Modules\TacoTuesday.Modules.Companies\TacoTuesday.Modules.Companies.csproj" />
     <ProjectReference Include="..\Modules\TacoTuesday.Modules.Leads\TacoTuesday.Modules.Leads.csproj" />
+    <!-- The SQL Server migrations. The host references them so that `dotnet ef` can find them
+         through this startup project, and so MigrationsAssembly resolves at runtime. -->
+    <ProjectReference Include="..\Migrations\TacoTuesday.Migrations.SqlServer\TacoTuesday.Migrations.SqlServer.csproj" />
   </ItemGroup>
 
   <ItemGroup>

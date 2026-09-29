@@ -9,11 +9,11 @@ using TacoTuesday.Modules.Leads.Persistence;
 
 #nullable disable
 
-namespace TacoTuesday.Modules.Leads.Persistence.Migrations
+namespace TacoTuesday.Migrations.SqlServer.Leads
 {
     [DbContext(typeof(LeadsDbContext))]
-    [Migration("20260929203424_InitialLeads")]
-    partial class InitialLeads
+    [Migration("20260929210438_Leads")]
+    partial class Leads
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)

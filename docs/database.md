@@ -10,39 +10,74 @@ Everything here is a command **Gio runs**, because Claude has no .NET SDK and no
 ## One-time setup
 
 ```bash
-dotnet tool install --global dotnet-ef
+dotnet tool install --global dotnet-ef --version 10.0.11
 ```
 
 If it is already installed:
 
 ```bash
-dotnet tool update --global dotnet-ef
+dotnet tool update --global dotnet-ef --version 10.0.11
 ```
+
+**Pin it, and pin it to the same version as the EF packages** in `Directory.Packages.props`.
+Tools older than the runtime refuse to run, and an unpinned install silently becomes whatever
+was newest that day. The CI does the same thing, in `.github/workflows/ci.yml`.
 
 ---
 
-## Creating the first migration
+## Where the migrations live, and why it is not where you would guess
 
-The model lives in `TacoTuesday.Modules.Leads`; the provider lives in the host. So `dotnet ef`
-needs to be told both — the project that holds the `DbContext`, and the startup project that
-knows it is SQL Server.
+**The migrations are NOT next to the `DbContext`.** They are in their own project,
+`src/Migrations/TacoTuesday.Migrations.SqlServer`, and `--project` has to point at it.
+
+The reason is worth thirty seconds, because getting it wrong breaks the build in a way that
+looks like a bug in the migration:
+
+- `TacoTuesday.Modules.Leads` owns the model and the mapping, and is **not allowed to know
+  which database it is on**. There is an architecture test for it. That seam is the only
+  reason the store's tests can run the same code against SQLite and still have a real unique
+  index to violate.
+- A migration is **provider-specific by construction**. `dotnet ef migrations add` builds the
+  model with the design-time provider and writes a snapshot that calls into that provider —
+  for SQL Server, `SqlServerModelBuilderExtensions.UseIdentityColumns(...)`.
+
+So a migration generated _into the module_ references a name the module cannot see, and the
+solution stops compiling: `error CS0103: The name 'SqlServerModelBuilderExtensions' does not
+exist in the current context`, twice. That happened on 29-sep-2026. The fix is **not** to
+delete the offending line by hand — a subtly wrong snapshot does not fail, it makes the _next_
+migration produce a wrong diff, months later, against a table with real rows. The fix is to
+generate into an assembly that is allowed to name the provider.
+
+Full reasoning in [`adr/0006-migrations-assembly.md`](adr/0006-migrations-assembly.md).
+
+---
+
+## Adding a migration
 
 Run this from the repository root:
 
 ```bash
-dotnet ef migrations add InitialLeads \
-  --project src/Modules/TacoTuesday.Modules.Leads \
+dotnet ef migrations add <Name> \
+  --project src/Migrations/TacoTuesday.Migrations.SqlServer \
   --startup-project src/TacoTuesday.Api \
-  --output-dir Persistence/Migrations
+  --output-dir Leads \
+  --namespace TacoTuesday.Migrations.SqlServer.Leads
 ```
 
-It writes three files under `src/Modules/TacoTuesday.Modules.Leads/Persistence/Migrations/`:
-the migration, its designer file, and the model snapshot.
+It writes three files under `src/Migrations/TacoTuesday.Migrations.SqlServer/Leads/`: the
+migration, its designer file, and the model snapshot.
+
+`--namespace` is passed explicitly so every future run lands on the same namespace as the
+files already there — otherwise the first person who omits it gets a diff that is pure noise.
+
+> The first migration, `InitialLeads`, already exists. It was generated on 29-sep-2026 into
+> the module, and **moved** here unchanged apart from its `namespace` line — which is exactly
+> what the command above regenerates.
 
 **This step is deliberately not done for you.** A migration and, more importantly, a model
 snapshot are generated artefacts: EF produces them from the model, deterministically, in a
 format that is tied to the EF version. A hand-written snapshot that is subtly wrong does not
-fail — it makes the *next* migration generate a wrong diff, months later, against a table with
+fail — it makes the _next_ migration generate a wrong diff, months later, against a table with
 real rows in it. One command here is cheaper than that.
 
 ### What it should produce
@@ -50,16 +85,16 @@ real rows in it. One command here is cheaper than that.
 If the mapping in `LeadConfiguration.cs` is what it should be, the generated `Up()` is a single
 `CreateTable` for `Leads` plus one `CreateIndex`, and reads roughly like this:
 
-| Column | Type | Null |
-| --- | --- | --- |
-| `Id` | `uniqueidentifier` | no — primary key, **no default**, the app supplies a UUID v7 |
-| `Kind` | `nvarchar(16)` | no — the text `Company` or `Candidate`, not a number |
-| `Name` | `nvarchar(80)` | no |
-| `Email` | `nvarchar(160)` | no — as typed |
-| `NormalizedEmail` | `nvarchar(160)` | no — lowercase |
-| `Company` | `nvarchar(80)` | yes |
-| `Role` | `nvarchar(80)` | yes |
-| `CreatedAtUtc` | `datetimeoffset` | no |
+| Column            | Type               | Null                                                         |
+| ----------------- | ------------------ | ------------------------------------------------------------ |
+| `Id`              | `uniqueidentifier` | no — primary key, **no default**, the app supplies a UUID v7 |
+| `Kind`            | `nvarchar(16)`     | no — the text `Company` or `Candidate`, not a number         |
+| `Name`            | `nvarchar(80)`     | no                                                           |
+| `Email`           | `nvarchar(160)`    | no — as typed                                                |
+| `NormalizedEmail` | `nvarchar(160)`    | no — lowercase                                               |
+| `Company`         | `nvarchar(80)`     | yes                                                          |
+| `Role`            | `nvarchar(80)`     | yes                                                          |
+| `CreatedAtUtc`    | `datetimeoffset`   | no                                                           |
 
 plus
 
@@ -86,7 +121,7 @@ Two ways. Prefer the script for anything that is not your own laptop.
 
 ```bash
 dotnet ef database update \
-  --project src/Modules/TacoTuesday.Modules.Leads \
+  --project src/Migrations/TacoTuesday.Migrations.SqlServer \
   --startup-project src/TacoTuesday.Api \
   --connection "<the real connection string>"
 ```
@@ -96,7 +131,7 @@ twice without harm:
 
 ```bash
 dotnet ef migrations script --idempotent \
-  --project src/Modules/TacoTuesday.Modules.Leads \
+  --project src/Migrations/TacoTuesday.Migrations.SqlServer \
   --startup-project src/TacoTuesday.Api \
   --output artifacts/leads-schema.sql
 ```
@@ -176,7 +211,7 @@ This is the check worth putting in CI:
 
 ```bash
 dotnet ef migrations has-pending-model-changes \
-  --project src/Modules/TacoTuesday.Modules.Leads \
+  --project src/Migrations/TacoTuesday.Migrations.SqlServer \
   --startup-project src/TacoTuesday.Api
 ```
 

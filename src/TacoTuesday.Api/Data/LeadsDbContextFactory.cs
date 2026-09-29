@@ -1,6 +1,7 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 
+using TacoTuesday.Migrations.SqlServer;
 using TacoTuesday.Modules.Leads.Persistence;
 
 namespace TacoTuesday.Api.Data;
@@ -27,7 +28,11 @@ public sealed class LeadsDbContextFactory : IDesignTimeDbContextFactory<LeadsDbC
     public LeadsDbContext CreateDbContext(string[] args)
     {
         var options = new DbContextOptionsBuilder<LeadsDbContext>()
-            .UseSqlServer(DesignTimeConnectionString)
+            .UseSqlServer(
+                DesignTimeConnectionString,
+                // Same pointer as Program.cs, for the same reason: `dotnet ef` has to find the
+                // migrations, and they are not in the assembly that holds the context.
+                sql => sql.MigrationsAssembly(SqlServerMigrations.AssemblyName))
             .Options;
 
         return new LeadsDbContext(options);

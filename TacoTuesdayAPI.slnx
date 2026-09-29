@@ -1,4 +1,4 @@
-<Solution>
+﻿<Solution>
   <Folder Name="/src/">
     <Project Path="src/TacoTuesday.Api/TacoTuesday.Api.csproj" />
     <Project Path="src/TacoTuesday.Infrastructure/TacoTuesday.Infrastructure.csproj" />
@@ -8,6 +8,9 @@
     <Project Path="src/Modules/TacoTuesday.Modules.Candidates/TacoTuesday.Modules.Candidates.csproj" />
     <Project Path="src/Modules/TacoTuesday.Modules.Companies/TacoTuesday.Modules.Companies.csproj" />
     <Project Path="src/Modules/TacoTuesday.Modules.Leads/TacoTuesday.Modules.Leads.csproj" />
+  </Folder>
+  <Folder Name="/src/Migrations/">
+    <Project Path="src/Migrations/TacoTuesday.Migrations.SqlServer/TacoTuesday.Migrations.SqlServer.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/TacoTuesday.ArchitectureTests/TacoTuesday.ArchitectureTests.csproj" />

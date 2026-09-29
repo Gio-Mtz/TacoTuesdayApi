@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The SQL Server migrations. They live here, and not next to the DbContext, because two
+    rules that are each correct on their own collide:
+
+      * A module owns its model and its mapping and must NOT know which database it is on.
+        The architecture test `Modules_must_not_depend_on_a_database_provider` enforces it,
+        and that seam is the only reason the Leads store's tests can run the very same code
+        against SQLite and still have a real unique index to violate.
+
+      * A migration is provider-specific BY CONSTRUCTION. `dotnet ef migrations add` builds
+        the model with the design-time provider and writes a snapshot that calls into that
+        provider — for SQL Server, `SqlServerModelBuilderExtensions.UseIdentityColumns(...)`.
+
+    Generate a migration into the module and it does not compile. That is exactly what
+    happened on 29-sep: two CS0103 on a name the module is not allowed to reference. The fix
+    is not to hand-edit generated code — a subtly wrong snapshot does not fail, it makes the
+    NEXT migration produce a wrong diff months later. The fix is to generate it into an
+    assembly that is allowed to name the provider. This one.
+
+    See docs/adr/0006-migrations-assembly.md and docs/database.md.
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Modules\TacoTuesday.Modules.Leads\TacoTuesday.Modules.Leads.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The provider. This project is allowed to know it is SQL Server; the module is not. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+</Project>

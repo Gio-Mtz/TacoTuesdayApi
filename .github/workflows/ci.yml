@@ -78,11 +78,18 @@ jobs:
         with:
           global-json-file: global.json
 
+      # Pinned, and pinned to the SAME version as the EF packages in
+      # Directory.Packages.props. An unpinned `tool install` takes whatever is newest on
+      # NuGet that day, and EF tools older than the runtime refuse to run outright — so an
+      # unpinned tool turns "somebody released a package" into "the build broke on a branch
+      # nobody touched". When the EF version moves, this moves with it.
       - name: Install dotnet-ef
-        run: dotnet tool install --global dotnet-ef
+        run: dotnet tool install --global dotnet-ef --version 10.0.11
 
+      # --project is the MIGRATIONS assembly, not the module that holds the DbContext. They
+      # are two different projects on purpose: see docs/adr/0006-migrations-assembly.md.
       - name: Check for pending model changes
         run: |
           dotnet ef migrations has-pending-model-changes \
-            --project src/Modules/TacoTuesday.Modules.Leads \
+            --project src/Migrations/TacoTuesday.Migrations.SqlServer \
             --startup-project src/TacoTuesday.Api
