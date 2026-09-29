@@ -78,6 +78,26 @@ jobs:
         with:
           global-json-file: global.json
 
+      # Same cache key as job 1, on purpose: the two jobs restore the same graph, so whichever
+      # one runs second gets a warm cache instead of hitting NuGet again.
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/Directory.Packages.props', '**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      # This step is not redundant with job 1. Jobs run on SEPARATE runners with separate
+      # filesystems, so nothing job 1 restored exists here — and `dotnet ef` does NOT restore
+      # for you. It shells out to MSBuild to read the project's metadata, MSBuild needs
+      # obj/project.assets.json to exist, and without it the command dies with
+      #   NETSDK1004: Assets file '.../obj/project.assets.json' not found
+      #   Unable to retrieve project metadata. Ensure it's an SDK-style project.
+      # before it ever looks at the model. That is what broke this job on 29-sep, and the
+      # error is misleading: the project is fine, it was simply never restored.
+      - name: Restore
+        run: dotnet restore
+
       # Pinned, and pinned to the SAME version as the EF packages in
       # Directory.Packages.props. An unpinned `tool install` takes whatever is newest on
       # NuGet that day, and EF tools older than the runtime refuse to run outright — so an
