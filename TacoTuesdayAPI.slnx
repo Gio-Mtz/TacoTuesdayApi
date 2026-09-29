@@ -7,6 +7,7 @@
   <Folder Name="/src/Modules/">
     <Project Path="src/Modules/TacoTuesday.Modules.Candidates/TacoTuesday.Modules.Candidates.csproj" />
     <Project Path="src/Modules/TacoTuesday.Modules.Companies/TacoTuesday.Modules.Companies.csproj" />
+    <Project Path="src/Modules/TacoTuesday.Modules.Leads/TacoTuesday.Modules.Leads.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/TacoTuesday.ArchitectureTests/TacoTuesday.ArchitectureTests.csproj" />

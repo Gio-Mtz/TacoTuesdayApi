@@ -44,6 +44,14 @@ dotnet_diagnostic.CA2225.severity = none
 #   slice completo sea un archivo. Esa co-locación es el punto de vertical slices.
 dotnet_diagnostic.CA1034.severity = none
 
+# CA1308 — Normalize strings to uppercase.
+#   La regla existe porque ToUpperInvariant es round-trip-safe y ToLowerInvariant no
+#   (hay caracteres que al bajar pierden información). Aquí el valor normalizado NO es
+#   para comparar en memoria: es la columna que US-005 indexa en SQL y la que aparece
+#   en un correo. "gio@x.com" es lo que un humano espera ver; "GIO@X.COM" no.
+#   La comparación real la hace un índice único sobre esa columna, no string.Equals.
+dotnet_diagnostic.CA1308.severity = none
+
 # CA1515 — Consider making public types internal.
 #   Los tipos de módulo son públicos a propósito: el host Api los compone.
 dotnet_diagnostic.CA1515.severity = none

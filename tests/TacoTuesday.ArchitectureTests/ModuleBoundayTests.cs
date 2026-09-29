@@ -3,6 +3,7 @@ using NetArchTest.Rules;
 using Shouldly;
 using TacoTuesday.Modules.Candidates;
 using TacoTuesday.Modules.Companies;
+using TacoTuesday.Modules.Leads;
 
 namespace TacoTuesday.ArchitectureTests;
 
@@ -10,9 +11,17 @@ public sealed class ModuleBoundaryTests
 {
     private static readonly Assembly CandidatesAssembly = typeof(CandidatesModule).Assembly;
     private static readonly Assembly CompaniesAssembly  = typeof(CompaniesModule).Assembly;
+    private static readonly Assembly LeadsAssembly      = typeof(LeadsModule).Assembly;
+
+    /// <summary>
+    /// Every module, in one place. A new module added to the solution and forgotten here
+    /// is a module with no boundary test — so this array is the checklist.
+    /// </summary>
+    private static readonly Assembly[] AllModules = [CandidatesAssembly, CompaniesAssembly, LeadsAssembly];
 
     private const string CandidatesRoot = "TacoTuesday.Modules.Candidates";
     private const string CompaniesRoot  = "TacoTuesday.Modules.Companies";
+    private const string LeadsRoot      = "TacoTuesday.Modules.Leads";
 
     /// <summary>Internals of a module are off-limits. Contracts are not.</summary>
     private static string[] InternalNamespacesOf(string moduleRoot) =>
@@ -25,8 +34,6 @@ public sealed class ModuleBoundaryTests
     [Fact]
     public void Candidates_must_not_reach_into_Companies_internals()
     {
-        var isTheModuleInRoot = InternalNamespacesOf(CompaniesRoot);
-
         var result = Types.InAssembly(CandidatesAssembly)
             .That().ResideInNamespaceStartingWith(CandidatesRoot)
             .ShouldNot().HaveDependencyOnAny(InternalNamespacesOf(CompaniesRoot))
@@ -47,9 +54,37 @@ public sealed class ModuleBoundaryTests
     }
 
     [Fact]
-    public void Modules_must_not_depend_on_the_Api_host()
+    public void Leads_must_not_reach_into_other_modules_internals()
+    {
+        var otherModulesInternals = InternalNamespacesOf(CandidatesRoot)
+            .Concat(InternalNamespacesOf(CompaniesRoot))
+            .ToArray();
+
+        var result = Types.InAssembly(LeadsAssembly)
+            .That().ResideInNamespaceStartingWith(LeadsRoot)
+            .ShouldNot().HaveDependencyOnAny(otherModulesInternals)
+            .GetResult();
+
+        result.IsSuccessful.ShouldBeTrue(Explain(result));
+    }
+
+    [Fact]
+    public void Other_modules_must_not_reach_into_Leads_internals()
     {
         foreach (var assembly in new[] { CandidatesAssembly, CompaniesAssembly })
+        {
+            var result = Types.InAssembly(assembly)
+                .ShouldNot().HaveDependencyOnAny(InternalNamespacesOf(LeadsRoot))
+                .GetResult();
+
+            result.IsSuccessful.ShouldBeTrue(Explain(result));
+        }
+    }
+
+    [Fact]
+    public void Modules_must_not_depend_on_the_Api_host()
+    {
+        foreach (var assembly in AllModules)
         {
             var result = Types.InAssembly(assembly)
                 .ShouldNot().HaveDependencyOn("TacoTuesday.Api")
@@ -66,7 +101,7 @@ public sealed class ModuleBoundaryTests
     [Fact]
     public void Handlers_must_not_depend_on_HttpContext()
     {
-        foreach (var assembly in new[] { CandidatesAssembly, CompaniesAssembly })
+        foreach (var assembly in AllModules)
         {
             var result = Types.InAssembly(assembly)
                 .That().HaveNameEndingWith("Handler")
@@ -80,7 +115,7 @@ public sealed class ModuleBoundaryTests
     [Fact]
     public void Endpoints_must_be_sealed_and_named_Endpoint()
     {
-        foreach (var assembly in new[] { CandidatesAssembly, CompaniesAssembly })
+        foreach (var assembly in AllModules)
         {
             var result = Types.InAssembly(assembly)
                 .That().ImplementInterface(typeof(TacoTuesday.SharedKernel.IEndpoint))

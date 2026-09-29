@@ -5,6 +5,7 @@
     <ProjectReference Include="..\TacoTuesday.Infrastructure\TacoTuesday.Infrastructure.csproj" />
     <ProjectReference Include="..\Modules\TacoTuesday.Modules.Candidates\TacoTuesday.Modules.Candidates.csproj" />
     <ProjectReference Include="..\Modules\TacoTuesday.Modules.Companies\TacoTuesday.Modules.Companies.csproj" />
+    <ProjectReference Include="..\Modules\TacoTuesday.Modules.Leads\TacoTuesday.Modules.Leads.csproj" />
   </ItemGroup>
 
   <ItemGroup>

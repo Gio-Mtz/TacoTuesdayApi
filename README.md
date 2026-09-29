@@ -6,18 +6,27 @@ The Angular frontend lives in a separate repository: [TacoTuesdayUI](https://git
 ## Docker
 
 ### Build the image
+
 ```bash
 docker build -t tacotuesday-api .
 ```
 
 ### Run the container
+
 ```bash
 docker run -p 8080:8080 tacotuesday-api
 ```
 
 The API will be available at `http://localhost:8080`.
 
+### Run container in dev env
+
+```bash
+docker run --rm -p 8080:8080 -e ASPNETCORE_ENVIRONMENT=Development tacotuesday-api
+```
+
 ### Run with env file (for settings)
+
 ```bash
 docker run -p 8080:8080 --env-file .env.local tacotuesday-api
 ```
@@ -58,3 +67,15 @@ dotnet test
 
 Decisions live in [`docs/adr`](docs/adr) — in the repo, so a reader on GitHub can see
 why things are the way they are without access to anything else.
+
+$RG       = "rg-tacotuesday"
+$LOCATION = "centralus"
+$ACR      = "ttcacrgiomtz"      # CAMBIALO, tiene que ser unico en Azure
+$ENVNAME = "cae-tacotuesday"
+$APINAME  = "tacotuesday-api"
+$IDENTITY = "id-tacotuesday"
+
+az group create --name $RG --location $LOCATION
+az acr create --resource-group $RG --location $LOCATION --name $ACR --sku Basic
+az acr config authentication-as-arm update --registry $ACR --status enabled
+az acr build --registry $ACR --image "$APINAME`:v1" .

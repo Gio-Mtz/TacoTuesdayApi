@@ -25,6 +25,7 @@
     <ProjectReference Include="..\..\src\TacoTuesday.SharedKernel\TacoTuesday.SharedKernel.csproj" />
     <ProjectReference Include="..\..\src\Modules\TacoTuesday.Modules.Candidates\TacoTuesday.Modules.Candidates.csproj" />
     <ProjectReference Include="..\..\src\Modules\TacoTuesday.Modules.Companies\TacoTuesday.Modules.Companies.csproj" />
+    <ProjectReference Include="..\..\src\Modules\TacoTuesday.Modules.Leads\TacoTuesday.Modules.Leads.csproj" />
   </ItemGroup>
 
 </Project>
