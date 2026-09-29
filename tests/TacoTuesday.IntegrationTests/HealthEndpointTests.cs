@@ -1,12 +1,11 @@
 using System.Net;
 using System.Net.Http.Json;
-using Microsoft.AspNetCore.Mvc.Testing;
 using Shouldly;
 
 namespace TacoTuesday.IntegrationTests;
 
-public sealed class HealthEndpointTests(WebApplicationFactory<Program> factory)
-    : IClassFixture<WebApplicationFactory<Program>>
+public sealed class HealthEndpointTests(TacoTuesdayApiFactory factory)
+    : IClassFixture<TacoTuesdayApiFactory>
 {
     private readonly HttpClient _client = factory.CreateClient();
 
@@ -16,6 +15,23 @@ public sealed class HealthEndpointTests(WebApplicationFactory<Program> factory)
         var response = await _client.GetAsync("/health/live", CancellationToken.None);
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
+    }
+
+    /// <summary>
+    /// Readiness is a different question from liveness, and since US-005 it has a different
+    /// answer: it runs the `leads-db` check, so it is only OK while the database is reachable.
+    /// This test is what says the check is actually wired into /health/ready and not sitting
+    /// in the container unregistered.
+    /// </summary>
+    [Fact]
+    public async Task Readiness_endpoint_is_healthy_when_the_database_is_reachable()
+    {
+        var response = await _client.GetAsync("/health/ready", CancellationToken.None);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        var body = await response.Content.ReadAsStringAsync(CancellationToken.None);
+        body.ShouldBe("Healthy");
     }
 
     [Fact]

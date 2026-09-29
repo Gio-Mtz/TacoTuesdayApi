@@ -5,17 +5,19 @@ using TacoTuesday.Modules.Leads.Domain;
 namespace TacoTuesday.Modules.Leads.Persistence;
 
 /// <summary>
-/// The waiting list, in RAM. Registered as a singleton by <c>AddLeadsModule</c>.
+/// The waiting list, in RAM.
 ///
-/// This is deliberate scope control, not an oversight: US-004 is the endpoint and its
-/// contract, US-005 is the table. Shipping them together would mean writing an EF Core
-/// mapping and a migration that nobody can run until the Azure SQL connection string
-/// exists, and reviewing all of it blind in one pull request.
+/// **No longer what production uses.** US-005 replaced the registration with
+/// <see cref="EfCoreLeadStore"/>; this stays because the endpoint's integration tests
+/// run against it on purpose. Those tests are about routing, binding, CORS and the rate
+/// limiter, and pointing them at a database would make every one of them able to fail
+/// for a reason that has nothing to do with what they are testing. The database path has
+/// its own tests, on SQLite, in <c>EfCoreLeadStoreTests</c>.
 ///
-/// What it costs, written down so nobody is surprised: **the list does not survive a
-/// restart, and each replica keeps its own.** Container Apps scales to zero, so in
-/// production today an address can be accepted and then vanish. That is why the endpoint
-/// is not announced to anybody until US-005 lands — see the ADR.
+/// What it cost while it WAS production, kept here because it is the reason US-005 exists:
+/// the list did not survive a restart and each replica kept its own, and Container Apps
+/// scales to zero — so an address could be accepted and then vanish. Do not put this back
+/// behind the endpoint.
 /// </summary>
 public sealed class InMemoryLeadStore : ILeadStore
 {

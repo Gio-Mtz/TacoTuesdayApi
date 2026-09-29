@@ -4,6 +4,15 @@
     <ProjectReference Include="..\..\TacoTuesday.SharedKernel\TacoTuesday.SharedKernel.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The model and the mapping, not the provider. Nothing here knows it is SQL Server:
+         the host picks that (see LeadsModule.AddLeadsPersistence), which is what lets the
+         store's tests run against SQLite with a real unique index. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>

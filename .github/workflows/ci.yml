@@ -1,0 +1,88 @@
+# Build and test the API on every push and every pull request.
+#
+# Why this file exists: until now nothing built this repository automatically. Claude writes
+# the C# but has no .NET SDK and cannot reach the Microsoft package hosts, so the only thing
+# standing between "written" and "known to compile" was Gio running two commands by hand on
+# every story. This is what replaces that — and, per EQUIPO - Roles y reglas, it is the
+# **final judge** on whether a backend story is Done.
+#
+# It runs on GitHub's runners, so it needs nothing from anybody's machine.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# A second push to the same branch cancels the first run instead of queueing behind it.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Build and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          # No version here on purpose: global.json pins it, and two places to change the SDK
+          # version is one place too many.
+          global-json-file: global.json
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/Directory.Packages.props', '**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Restore
+        run: dotnet restore
+
+      # --no-restore so this step fails on compilation, not on a network hiccup that already
+      # had its own step. TreatWarningsAsErrors is on in Directory.Build.props, so a warning
+      # fails the build here — which is the point of turning it on.
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test --configuration Release --no-build --verbosity normal
+
+  # Separate job, because it answers a different question: not "does the code work" but
+  # "does the migration still describe the model". Nothing in the test suite can see this —
+  # the tests build their schema with EnsureCreated() from the model itself, so a migration
+  # that has drifted away from LeadConfiguration.cs keeps every test green and then produces
+  # the wrong table on the next deploy.
+  #
+  # It will fail until the first migration exists. That failure is correct and the fix is one
+  # command — see docs/database.md.
+  migrations-match-the-model:
+    name: Migrations match the model
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Install dotnet-ef
+        run: dotnet tool install --global dotnet-ef
+
+      - name: Check for pending model changes
+        run: |
+          dotnet ef migrations has-pending-model-changes \
+            --project src/Modules/TacoTuesday.Modules.Leads \
+            --startup-project src/TacoTuesday.Api

@@ -4,6 +4,7 @@ using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
 using TacoTuesday.Infrastructure;
 using TacoTuesday.Modules.Candidates;
@@ -96,11 +97,50 @@ builder.Services.AddRateLimiter(options =>
         }));
 });
 
+// ── Database ──────────────────────────────────────────────────────
+// The host owns the connection string and the provider; the Leads module owns the model.
+// That seam is what lets the store's tests run the same code against SQLite and still have
+// a real unique index to violate. See ADR 0005.
+var leadsConnectionString = builder.Configuration.GetConnectionString("Leads");
+
+// Fail at boot, loudly, rather than at the first signup. A Container App with no connection
+// string configured is a misconfiguration, and the cheapest place to find out is a container
+// that refuses to start — not a visitor who gets a 500 after typing their address in.
+//
+// The one opt-out is for the integration tests, which bring their own database in
+// ConfigureTestServices — that is, after this line has already run. It is a setting rather
+// than an environment-name check because UseSetting is the channel WebApplicationFactory is
+// guaranteed to reach, and the name is under `Testing:` so that nobody reaches for it in
+// production by accident. Turning it on there does not get you a working API: it gets you a
+// 500 on the first POST, from a container that started and should not have.
+var allowMissingDatabase = builder.Configuration.GetValue("Testing:AllowMissingDatabase", false);
+
+if (!allowMissingDatabase && string.IsNullOrWhiteSpace(leadsConnectionString))
+{
+    throw new InvalidOperationException(
+        "ConnectionStrings:Leads is not configured. Set it as an environment variable " +
+        "(ConnectionStrings__Leads) or as a Container Apps secret. See docs/database.md.");
+}
+
 // ── Modules ───────────────────────────────────────────────────────
 // The host knows each module by exactly one method. Nothing else.
 builder.Services.AddCandidatesModule();
 builder.Services.AddCompaniesModule();
 builder.Services.AddLeadsModule();
+
+if (!string.IsNullOrWhiteSpace(leadsConnectionString))
+{
+    builder.Services.AddLeadsPersistence(options => options.UseSqlServer(
+        leadsConnectionString,
+        sql => sql.EnableRetryOnFailure(
+            maxRetryCount: 5,
+            // Azure SQL on the serverless tier pauses when idle and takes a few seconds to
+            // wake up, and the connection that wakes it is the one that gets dropped. Without
+            // this, the first signup after a quiet night fails for no reason the visitor
+            // could have done anything about.
+            maxRetryDelay: TimeSpan.FromSeconds(10),
+            errorNumbersToAdd: null)));
+}
 
 var app = builder.Build();
 
@@ -132,8 +172,10 @@ if (app.Environment.IsDevelopment())
 // never makes the orchestrator kill a healthy process.
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 
-// Readiness: "can it serve traffic?" — runs every registered check.
-// US-002 adds the PostgreSQL check here.
+// Readiness: "can it serve traffic?" — runs every registered check, which since US-005
+// includes `leads-db`. While the database is unreachable this answers 503 and Container Apps
+// stops routing to the replica — which is the right response, unlike a restart: restarting a
+// healthy process does not fix a database that is asleep.
 app.MapHealthChecks("/health/ready");
 
 app.MapEndpoints();

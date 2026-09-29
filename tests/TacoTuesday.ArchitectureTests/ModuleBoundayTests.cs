@@ -126,6 +126,38 @@ public sealed class ModuleBoundaryTests
         }
     }
 
+    /// <summary>
+    /// A module may know it lives on a relational database. It may not know WHICH one.
+    ///
+    /// This is the rule US-005 is built on: the Leads module owns the model and the mapping,
+    /// the host picks the provider (<c>LeadsModule.AddLeadsPersistence</c>), and that seam is
+    /// the only reason the store's tests can run the same code against SQLite and still have a
+    /// real unique index to violate. A <c>UseSqlServer</c> that drifts into a module would
+    /// silently take that away and every test in the suite would stay green.
+    /// </summary>
+    [Fact]
+    public void Modules_must_not_depend_on_a_database_provider()
+    {
+        string[] providers =
+        [
+            "Microsoft.EntityFrameworkCore.SqlServer",
+            "Microsoft.EntityFrameworkCore.Sqlite",
+            "Microsoft.EntityFrameworkCore.Cosmos",
+            "Microsoft.EntityFrameworkCore.InMemory",
+            "Npgsql.EntityFrameworkCore.PostgreSQL",
+            "Microsoft.Data.SqlClient"
+        ];
+
+        foreach (var assembly in AllModules)
+        {
+            var result = Types.InAssembly(assembly)
+                .ShouldNot().HaveDependencyOnAny(providers)
+                .GetResult();
+
+            result.IsSuccessful.ShouldBeTrue(Explain(result));
+        }
+    }
+
     private static string Explain(TestResult result) =>
         result.IsSuccessful
             ? string.Empty

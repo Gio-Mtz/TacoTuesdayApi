@@ -1,15 +1,14 @@
 using System.Net;
 using System.Net.Http.Json;
 
-using Microsoft.AspNetCore.Mvc.Testing;
-
 using Shouldly;
 
 namespace TacoTuesday.IntegrationTests;
 
 /// <summary>
 /// <c>POST /api/leads</c> through the real pipeline: routing, model binding, the rate
-/// limiter and the JSON serializer all included.
+/// limiter, the JSON serializer — and, since US-005, a real database, on SQLite, with the
+/// real unique index. See <see cref="TacoTuesdayApiFactory"/> for why that provider.
 ///
 /// **These tests are on a budget.** The endpoint is rate limited to 5 requests per minute
 /// per client, and through TestServer every request looks like the same client. xUnit gives
@@ -18,8 +17,8 @@ namespace TacoTuesday.IntegrationTests;
 /// failure will look like a bug in the endpoint. That is why the rate limit gets its own
 /// class below, with its own budget.
 /// </summary>
-public sealed class LeadsEndpointTests(WebApplicationFactory<Program> factory)
-    : IClassFixture<WebApplicationFactory<Program>>
+public sealed class LeadsEndpointTests(TacoTuesdayApiFactory factory)
+    : IClassFixture<TacoTuesdayApiFactory>
 {
     private readonly HttpClient _client = factory.CreateClient();
 
@@ -91,8 +90,8 @@ public sealed class LeadsEndpointTests(WebApplicationFactory<Program> factory)
 /// This is the requirement inherited from ADR 0003: the form's honeypot is a filter drawn
 /// on the page and stops nothing that posts straight at the URL.
 /// </summary>
-public sealed class LeadsRateLimitTests(WebApplicationFactory<Program> factory)
-    : IClassFixture<WebApplicationFactory<Program>>
+public sealed class LeadsRateLimitTests(TacoTuesdayApiFactory factory)
+    : IClassFixture<TacoTuesdayApiFactory>
 {
     private readonly HttpClient _client = factory.CreateClient();
 

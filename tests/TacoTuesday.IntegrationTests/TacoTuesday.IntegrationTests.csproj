@@ -10,6 +10,10 @@
   <ItemGroup>
     <PackageReference Include="coverlet.collector" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <!-- The database these tests run against. SQLite, not the EF in-memory provider, because
+         the unique index on NormalizedEmail is half of what POST /api/leads promises and the
+         in-memory provider does not enforce indexes. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="Shouldly" />
     <PackageReference Include="xunit" />
