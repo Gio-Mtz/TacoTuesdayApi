@@ -113,3 +113,48 @@ jobs:
           dotnet ef migrations has-pending-model-changes \
             --project src/Migrations/TacoTuesday.Migrations.SqlServer \
             --startup-project src/TacoTuesday.Api
+
+  # Third job, and the reason it exists is a three-week outage nobody could see.
+  #
+  # NOTHING in this repository built the Dockerfile. Job 1 builds the solution and job 2 checks
+  # the model, and both pass on a Dockerfile that cannot build at all -- because `dotnet restore`
+  # inside the image only sees the .csproj files the Dockerfile explicitly COPYs, and the
+  # solution build on the runner sees every file in the checkout. The two disagree the moment a
+  # story adds a project.
+  #
+  # That is exactly what happened. US-004 added the Leads module and US-005 added the migrations
+  # assembly to the Api project's reference closure; the Dockerfile was not touched; and from
+  # that commit on every image build died at restore with
+  #
+  #   MSB3202: The project file ".../TacoTuesday.Modules.Leads.csproj" was not found.
+  #
+  # The cost of not having this job: the running revision in Azure kept serving the image built
+  # on 09-sep. `/health/live` and `/health/ready` answered Healthy from it -- they are real
+  # health checks of a real, old container -- so every signal said the API was fine, while
+  # `POST /api/leads` answered **404** because that endpoint had never been shipped. The 404
+  # reads like a bug in the endpoint or in the UI. It was neither: it was a build nobody ran.
+  #
+  # So this job's job is narrow and it is the whole point: prove the Dockerfile still builds.
+  # It does NOT push, tag or deploy anything -- no registry credentials live here, and a
+  # deployment is Gio's call, not a side effect of a push.
+  #
+  # It costs a full NuGet restore inside the image on every run (~2 min) because there is no
+  # layer cache on a fresh runner. That is the honest trade and it is worth it at this price.
+  # If it ever gets annoying, the next step is docker/setup-buildx-action with
+  # `cache-from: type=gha` -- deliberately not done today, because a plain `docker build` has
+  # no moving parts and this job's value is that it never needs maintenance.
+  container-image:
+    name: Container image builds
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # No setup-dotnet and no restore on the runner on purpose: the SDK that matters is the
+      # one inside the image (mcr.microsoft.com/dotnet/sdk:10.0). Anything installed out here
+      # would be a second source of truth that hides the very drift this job exists to catch.
+      #
+      # The full image, not `--target build`: the final stage copies the publish output and
+      # sets USER $APP_UID, and a typo there breaks a container that compiled perfectly.
+      - name: Build the image
+        run: docker build --file Dockerfile --tag tacotuesday-api:ci .
