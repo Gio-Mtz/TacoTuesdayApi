@@ -75,6 +75,8 @@ $ENVNAME = "cae-tacotuesday"
 $APINAME  = "tacotuesday-api"
 $IDENTITY = "id-tacotuesday"
 
+$SQLCONNSTRING = "Server=tcp:tacotuesday-sql.database.windows.net,1433;Initial Catalog=ttc-sqldb-prod;Persist Security Info=False;User ID=<user>;Password={your_password};MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;"
+
 az group create --name $RG --location $LOCATION
 az acr create --resource-group $RG --location $LOCATION --name $ACR --sku Basic
 az acr config authentication-as-arm update --registry $ACR --status enabled
