@@ -1,0 +1,61 @@
+# Local development dependencies for the Taco Tuesday API.
+#
+# This file starts the things you do NOT want to install on your machine — right now, just
+# SQL Server. The API and the Angular app run natively (`dotnet run`, `npm start`) because
+# hot reload inside a container is slower and harder to debug, and the inner loop is the
+# thing you pay for a hundred times a day.
+#
+#   docker compose up -d          start SQL Server in the background
+#   docker compose ps             check it is healthy
+#   docker compose down           stop it (data survives, it is in a volume)
+#   docker compose down -v        stop it AND wipe the data (start clean)
+#
+# See docs/onboarding.md for the full setup.
+
+services:
+  sql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: ttc-sql
+    environment:
+      ACCEPT_EULA: "Y"
+      # Read from .env — never hardcoded. Copy .env.example to .env and set your own.
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Copy .env.example to .env and set MSSQL_SA_PASSWORD}
+      MSSQL_PID: Developer
+    ports:
+      # Host 14330 on purpose, not 1433: if you ever install SQL Server natively on Windows
+      # it takes 1433, and two things fighting over a port is a bad afternoon.
+      - "14330:1433"
+    volumes:
+      - ttc-sql-data:/var/opt/mssql
+    healthcheck:
+      # The container reports "running" long before SQL Server accepts connections. Without a
+      # healthcheck the API starts first, fails to connect, and you blame the code.
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -C -Q 'SELECT 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  # Optional: run the API in a container too, to reproduce exactly what ships to Azure.
+  # Not started by default — `docker compose --profile parity up -d` when you need it.
+  api:
+    profiles: ["parity"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ttc-api
+    depends_on:
+      sql:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_HTTP_PORTS: 8080
+      # "sql" is the service name: inside the compose network containers reach each other by
+      # service name on the INTERNAL port (1433), not through the published host port.
+      ConnectionStrings__Leads: "Server=sql,1433;Database=TacoTuesdayLeads;User Id=sa;Password=${MSSQL_SA_PASSWORD};TrustServerCertificate=True;Encrypt=False"
+      Cors__AllowedOrigins__0: "http://localhost:4200"
+    ports:
+      - "5001:8080"
+
+volumes:
+  ttc-sql-data:
