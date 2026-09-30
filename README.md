@@ -11,6 +11,24 @@ The Angular frontend lives in a separate repository: [TacoTuesdayUI](https://git
 docker build -t tacotuesday-api .
 ```
 
+### Build image Azure Cloud Shell
+
+```bash
+az acr build --registry ttcacrgiomtz --image tacotuesday-api:v2 --file Dockerfile https://github.com/Gio-Mtz/TacoTuesdayApi.git#main
+```
+
+### Build image local change versions
+
+```bash
+az acr build --registry ttcacrgiomtz --image tacotuesday-api:v2 --file Dockerfile .
+```
+
+### Update image azure
+
+```bash
+az containerapp update --name tacotuesday-api --resource-group rg-tacotuesday --image ttcacrgiomtz.azurecr.io/tacotuesday-api:v2
+```
+
 ### Run the container
 
 ```bash
