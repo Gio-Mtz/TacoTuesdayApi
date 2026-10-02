@@ -1,167 +1,153 @@
-# Onboarding — from zero to running locally
+# Onboarding — de cero a corriendo
 
-**Target: 20 minutes on a clean machine.** If it takes you longer, that is a bug in this
-document — open an issue.
+**Meta: 15 minutos.** Si te toma más, es un bug de este documento. Dime dónde te atoraste.
 
-This is the only setup document. `docs/database.md` covers migrations and production; come
-back to it after this works.
+No instalas SQL Server. No levantas contenedores. No creas ninguna contraseña.
+**No vas a tocar un solo secreto en todo este documento.**
 
 ---
 
-## 0. What you need installed
+## 0. Lo que necesitas instalado
 
-| Tool | Version | Check |
+| Herramienta | Versión | Comprobar |
 | --- | --- | --- |
-| .NET SDK | 10.0.x (pinned in `global.json`) | `dotnet --list-sdks` |
+| .NET SDK | 10.0.x (lo fija `global.json`) | `dotnet --list-sdks` |
 | Node.js | 22 LTS | `node --version` |
-| Docker Desktop | any current | `docker compose version` |
-| Git | any current | `git --version` |
+| Azure CLI | cualquiera reciente | `az version` |
+| Git | cualquiera reciente | `git --version` |
 
-You do **not** need SQL Server installed. Docker provides it.
-You do **not** need an Azure account to develop. Only to deploy.
+Nada de Docker. Nada de SQL Server local.
 
-## 1. Clone both repositories
-
-They are separate on purpose — see [`adr/0001-two-repositories.md`](adr/0001-two-repositories.md).
+## 1. Clona los dos repos
 
 ```bash
 git clone https://github.com/Gio-Mtz/TacoTuesdayApi.git
 git clone https://github.com/Gio-Mtz/TacoTuesdayUI.git
 ```
 
-## 2. Start the database
-
-From the API repository root:
+## 2. Inicia sesión en Azure
 
 ```bash
-cp .env.example .env          # Windows: copy .env.example .env
+az login
 ```
 
-Open `.env` and set your own `MSSQL_SA_PASSWORD`. It needs 8+ characters with uppercase,
-lowercase, a digit and a symbol — SQL Server refuses weak ones and the container dies with the
-reason buried in its logs.
+Se abre el navegador, entras con tu cuenta de trabajo, y ya.
+
+**Eso es todo lo que hay que hacer para tener acceso a la base de datos.** No hay contraseña
+que pedirle a nadie, ni cadena de conexión que configurar, ni archivo `.env` que llenar.
+
+> ¿Por qué funciona? La cadena de conexión dice `Authentication=Active Directory Default`.
+> El cliente de SQL busca una identidad de Azure en tu máquina — tu sesión de `az login`, la de
+> Visual Studio o la de VS Code — y pide un token con ella. **No existe ninguna contraseña**,
+> ni en tu máquina ni en el repo ni en Azure. Por eso la cadena de conexión está commiteada en
+> `appsettings.Development.json`: no hay nada que esconder.
+>
+> Si te sale `Login failed for user '<token-identified principal>'`, significa que tu cuenta
+> aún no está en el grupo `ttc-developers`. Pídeselo a Gio — es un clic.
+
+## 3. Corre la API
 
 ```bash
-docker compose up -d
-docker compose ps             # wait until STATUS says (healthy)
-```
-
-The first run downloads about 1.5 GB. After that it starts in seconds.
-
-**The healthcheck matters.** SQL Server reports the container as running well before it accepts
-connections. Wait for `(healthy)` or your first `dotnet run` fails to connect and you will go
-looking for a bug in the code.
-
-> Port **14330**, not 1433. If you ever install SQL Server natively it takes 1433, and two
-> things fighting over a port is a bad afternoon.
-
-## 3. Tell the API where the database is
-
-The app reads `ConnectionStrings:Leads` and **refuses to start without it**. That is deliberate
-— see `docs/database.md`. Locally it goes in user secrets, which live outside the repository,
-so there is no way to commit it by accident:
-
-```bash
-cd src/TacoTuesday.Api
-dotnet user-secrets set "ConnectionStrings:Leads" "Server=localhost,14330;Database=TacoTuesdayLeads;User Id=sa;Password=<the password from your .env>;TrustServerCertificate=True;Encrypt=False"
-cd ../..
-```
-
-`TrustServerCertificate=True` is for the container's self-signed certificate. It is correct
-locally and **wrong in production**, where Azure SQL presents a real certificate.
-
-## 4. Create the schema
-
-```bash
-dotnet tool install --global dotnet-ef --version 10.0.11   # once per machine
-
-dotnet ef database update \
-  --project src/Migrations/TacoTuesday.Migrations.SqlServer \
-  --startup-project src/TacoTuesday.Api
-```
-
-The migrations are in their own project on purpose. If that surprises you, read
-[`adr/0006-migrations-assembly.md`](adr/0006-migrations-assembly.md) before touching them.
-
-## 5. Run the API
-
-```bash
+cd TacoTuesdayApi
 dotnet run --project src/TacoTuesday.Api
 ```
 
-| Check | Expect |
+| Revisa | Esperas |
 | --- | --- |
-| `https://localhost:7001/health/live` | `Healthy` — the process is up |
-| `https://localhost:7001/health/ready` | `Healthy` — **the database answered** |
-| `https://localhost:7001/scalar` | The API reference |
+| `https://localhost:7001/health/live` | `Healthy` — el proceso está arriba |
+| `https://localhost:7001/health/ready` | `Healthy` — **la base contestó** |
+| `https://localhost:7001/scalar` | La referencia de la API |
 
-If `ready` returns 503, the API is running but cannot reach the database. Step 2 or 3 is wrong.
+Si `ready` da 503, la API está corriendo pero no alcanza la base. Casi siempre es una de dos:
+no hiciste `az login`, o tu IP no está en el firewall (ver abajo).
 
-## 6. Run the UI
+## 4. Corre la UI
 
-In another terminal, from the UI repository:
+En otra terminal, en el otro repo:
 
 ```bash
 npm ci
 npm start
 ```
 
-Open `http://localhost:4200`.
+Abre `http://localhost:4200`.
 
-The Angular dev server proxies `/api` to the API — see `proxy.conf.json`. That is why there is
-no CORS problem in development and why there is one in production.
+## 5. Compruébalo de punta a punta
 
-## 7. Prove it end to end
+Llena el formulario de la lista de espera con tu propio correo. Luego, en Azure Data Studio o
+en el portal (Query editor):
 
-Submit the waiting-list form. Then:
-
-```bash
-docker compose exec sql /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "<your password>" -C \
-  -d TacoTuesdayLeads -Q "SELECT Email, Kind, CreatedAtUtc FROM Leads"
+```sql
+SELECT TOP 10 Email, Kind, CreatedAtUtc FROM Leads ORDER BY CreatedAtUtc DESC;
 ```
 
-Your address should be there. **That is the definition of "my environment works".**
+Tu correo debe estar ahí. **Eso es "mi entorno funciona".**
 
 ---
 
-## Daily commands
+## Lo único que tienes que entender sobre las bases
+
+Hay **dos**, en el mismo servidor:
+
+| Base | Quién la usa | Qué hay dentro |
+| --- | --- | --- |
+| `ttc-sqldb-dev` | **Tú, en local.** Y el CI | Datos de prueba. Rómpela sin miedo |
+| `ttc-sqldb-prod` | **Solo** la Container App en Azure | Gente real. Nadie se conecta desde su máquina |
+
+Tu máquina apunta a **dev**, siempre. No hay configuración que cambiar: es lo que dice
+`appsettings.Development.json`, y `Development` es el entorno por defecto de `dotnet run`.
+
+**Nadie se conecta a prod desde su laptop.** No porque esté prohibido por política, sino porque
+sería compartir la base con los usuarios reales: tus pruebas quedarían entre sus registros, un
+`dotnet ef database update` tuyo cambiaría el esquema de producción, y el consumo de tu laptop
+se comería la cuota gratuita mensual — que al agotarse **pausa la base**, o sea tira el sitio.
+
+---
+
+## Comandos del día a día
 
 ```bash
-docker compose up -d                        # start the database
 dotnet run --project src/TacoTuesday.Api    # API   (terminal 1)
-npm start                                   # UI    (terminal 2, other repo)
-dotnet test                                 # the whole suite
+npm start                                    # UI    (terminal 2, otro repo)
+dotnet test                                  # toda la suite
+az login                                     # solo si el token expiró
 ```
 
-## Running the API in a container instead
-
-To reproduce exactly what ships to Azure — worth doing before blaming the cloud:
-
-```bash
-docker compose --profile parity up -d --build
-curl http://localhost:5001/health/ready
-```
-
-Note Scalar is **absent** there: the Dockerfile sets `ASPNETCORE_ENVIRONMENT=Production` and
-the API reference is behind `IsDevelopment()`. That is correct, not a bug.
+El token de Azure dura unas horas. Si de repente la API deja de alcanzar la base después de un
+rato, `az login` otra vez y listo.
 
 ---
 
-## When it does not work
+## Si algo no funciona
 
-| Symptom | Cause |
+| Síntoma | Causa |
 | --- | --- |
-| `docker compose up` exits immediately | Password too weak, or `.env` missing. `docker compose logs sql` |
-| API: "connection string ... is required" | Step 3 not done, or done in the wrong folder |
-| `/health/ready` is 503 | Database unreachable: wrong port, container not healthy, or schema missing |
-| `ng build` fails after pulling | `npm ci` — someone changed a dependency |
-| Port 14330 in use | Another compose stack is running. `docker compose down` in it |
-| Tests pass locally, CI red | You forgot `dotnet ef migrations has-pending-model-changes`. See `docs/database.md` |
+| `Login failed for user '<token-identified principal>'` | Tu cuenta no está en `ttc-developers`. Pídeselo a Gio |
+| `Cannot open server ... requested by the login` | Tu IP no está en el firewall. Pídeselo a Gio, o ábrelo tú con el comando de abajo |
+| `/health/ready` da 503 | Falta `az login`, o lo de arriba |
+| La primera petición tarda varios segundos | La base es *serverless* y estaba dormida. Es normal, despierta sola |
+| `ng build` falla después de un pull | `npm ci` — alguien cambió una dependencia |
 
-Start clean at any point:
+Si tienes permisos en la suscripción, puedes abrir tu propia IP:
 
 ```bash
-docker compose down -v      # deletes the volume — all local data goes
-docker compose up -d
-# then repeat step 4
+az sql server firewall-rule create \
+  --resource-group rg-tacotuesday --server tacotuesday-sql \
+  --name "dev-$(whoami)" \
+  --start-ip-address $(curl -s ifconfig.me) --end-ip-address $(curl -s ifconfig.me)
 ```
+
+---
+
+## Migraciones
+
+No las corras contra prod desde tu máquina. Para la base de dev está bien y es parte del
+trabajo normal:
+
+```bash
+dotnet ef database update \
+  --project src/Migrations/TacoTuesday.Migrations.SqlServer \
+  --startup-project src/TacoTuesday.Api
+```
+
+Cómo se crean, y cómo llegan a producción, está en [`database.md`](database.md).
