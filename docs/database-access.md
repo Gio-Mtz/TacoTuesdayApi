@@ -116,23 +116,71 @@ ALTER ROLE db_datawriter ADD MEMBER [id-tacotuesday];
 If the Container App was created with a user-assigned identity, use that identity's name. If it
 uses a system-assigned identity, the name is the Container App's own name.
 
+Verify it landed:
+
+```sql
+SELECT name, type_desc, authentication_type_desc
+FROM sys.database_principals WHERE name = 'id-tacotuesday';
+```
+
+`type_desc` should be `EXTERNAL_USER`. No row means the statement did not run, whatever the
+editor showed.
+
+#### If `FROM EXTERNAL PROVIDER` fails
+
+In tenants whose Entra admin is a guest or a personal Microsoft account, the server cannot always
+resolve the name through Graph and the statement fails with *Principal 'id-tacotuesday' could not
+be found*. The managed identity is fine; only the lookup failed. Create the user from its client
+id instead — same result, no Graph call:
+
+```sql
+DECLARE @appId uniqueidentifier = CAST('PEGA-AQUI-EL-CLIENT-ID' AS uniqueidentifier);
+DECLARE @sql nvarchar(max) = N'CREATE USER [id-tacotuesday] WITH SID = '
+    + CONVERT(nvarchar(100), CAST(@appId AS varbinary(16)), 1) + N', TYPE = E;';
+EXEC sp_executesql @sql;
+
+ALTER ROLE db_datareader ADD MEMBER [id-tacotuesday];
+ALTER ROLE db_datawriter ADD MEMBER [id-tacotuesday];
+```
+
+`TYPE = E` is "external user". The `CAST(... AS varbinary(16))` is what converts the GUID to the
+byte order SQL Server expects — doing it by hand is where this goes wrong.
+
 ### 6. Point the Container App at prod, without a password
 
-```bash
-az containerapp update --name tacotuesday-api --resource-group rg-tacotuesday \
-  --set-env-vars "ConnectionStrings__Leads=Server=tcp:tacotuesday-sql.database.windows.net,1433;Initial Catalog=ttc-sqldb-prod;Authentication=Active Directory Default;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30"
-```
-
-Note this is an **environment variable, not a secret** — because it contains no secret.
-
-Also make sure the Container App has the user-assigned identity attached and that
-`AZURE_CLIENT_ID` is set to that identity's client id, so `Active Directory Default` picks the
-right one when more than one identity is present:
+The Container App authenticates as its **managed identity**. Name the identity outright; do not
+leave it to a credential chain to guess.
 
 ```bash
-az containerapp update --name tacotuesday-api --resource-group rg-tacotuesday \
-  --set-env-vars "AZURE_CLIENT_ID=$(az identity show -n id-tacotuesday -g rg-tacotuesday --query clientId -o tsv)"
+RG=rg-tacotuesday; APP=tacotuesday-api; MI=id-tacotuesday
+
+# the identity exists and is attached to the app (both commands are idempotent)
+az identity create -n $MI -g $RG -o none
+az containerapp identity assign -n $APP -g $RG \
+  --user-assigned $(az identity show -n $MI -g $RG --query id -o tsv) -o none
+
+CLIENT_ID=$(az identity show -n $MI -g $RG --query clientId -o tsv)
+echo "clientId = $CLIENT_ID"   # needed again in step 5
+
+az containerapp update -n $APP -g $RG --set-env-vars \
+  "ConnectionStrings__Leads=Server=tcp:tacotuesday-sql.database.windows.net,1433;Initial Catalog=ttc-sqldb-prod;Authentication=Active Directory Managed Identity;User Id=$CLIENT_ID;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30"
 ```
+
+This is an **environment variable, not a secret** — it contains no secret. If a Container App
+secret was created for it earlier, it is now unreferenced and can be removed:
+
+```bash
+az containerapp secret remove -n $APP -g $RG --secret-names <nombre-del-secret>
+```
+
+#### Why this `Authentication` value and not another one
+
+| Value | In a container |
+|---|---|
+| `Active Directory Managed Identity` + `User Id=<clientId>` | **Correct.** Names one identity, fails fast and clearly. |
+| `Active Directory Default` | Works, but walks a chain of credential types; when the identity is missing or ungranted it spends 30+ seconds probing, turning a clear error into a timeout. |
+| `Active Directory Interactive` | **Can never work.** It opens a browser window for the MFA prompt. There is no browser and no human inside a replica. It succeeds on a laptop for exactly that reason. |
+| `User Id=persona@correo.com` | Wrong kind of principal. A person's sign-in is not a workload identity; it cannot be used unattended. |
 
 ### 7. Firewall
 
@@ -179,3 +227,85 @@ az sql server ad-only-auth enable --resource-group rg-tacotuesday --name tacotue
 
 After that, a leaked password is not a risk, because there is no password. Do this **after**
 step 4 and 5 are verified — not before, or you lock yourself out.
+
+---
+
+## Troubleshooting: `/health/ready` returns 503 `Unhealthy`
+
+Read the symptom precisely before changing anything. A body of `Unhealthy` means **ASP.NET
+answered**: the container is running, ingress is fine, the image is fine. ASP.NET returns 503
+for an unhealthy report, and the only check tagged `ready` that can fail is
+`AddDbContextCheck<LeadsDbContext>(name: "leads-db")`, registered in `LeadsModule`. So the app
+cannot open the database. Nothing else is broken.
+
+(A 503 from Azure itself — no revision running, failing probes — has an Azure HTML body instead,
+and `/health/live` fails too. Check `/health/live` first: if it returns 200, the problem is the
+database, full stop.)
+
+### 0. First: a changed secret does NOT reach a running replica
+
+This is the trap that makes this bug look unfixable. `az containerapp secret set` stores the new
+value and **does not restart anything**. The replicas that are already running keep the value they
+were started with, so the log keeps printing the *old* error and it looks as though the new value
+changed nothing.
+
+Only a change to the container *template* creates a new revision. A secret is not part of the
+template; an environment variable is. So either force a restart:
+
+```bash
+REV=$(az containerapp revision list -n tacotuesday-api -g rg-tacotuesday \
+        --query "[?properties.active].name | [0]" -o tsv)
+az containerapp revision restart -n tacotuesday-api -g rg-tacotuesday --revision $REV
+```
+
+…or avoid the whole class of problem by holding the connection string as an **environment
+variable** (step 6). `az containerapp update --set-env-vars` is a template change: it creates a new
+revision, and the new replicas start with the new value. Nothing to remember.
+
+**The tripwire:** if the log still names the *same character index* after you changed the value,
+the replica is not reading what you wrote. Restart it before you touch the string again.
+
+### 1. See the actual exception
+
+`AddDbContextCheck` reports only `Unhealthy` over HTTP; the exception goes to the log.
+
+```bash
+az containerapp logs show -n tacotuesday-api -g rg-tacotuesday --tail 200 --follow
+```
+
+Then curl `/health/ready` and watch what appears. Match the message:
+
+| In the log | Cause | Fix |
+|---|---|---|
+| `Login failed for user '<token-identified principal>'` | The identity authenticated with Entra but has no user in the database | step 5 |
+| `ManagedIdentityCredential authentication unavailable` | No identity attached to the app | step 6, `identity assign` |
+| `Cannot open server ... requested by the login` / `not allowed to access` | Firewall | step 7 |
+| `Connection Timeout Expired` after ~30 s | Database auto-paused (free-limit quota) or firewall silently dropping | portal: database status |
+| `interactive authentication is not supported` / hangs | Connection string still says `Active Directory Interactive` | step 6 |
+
+### 2. Confirm what the app is actually configured with
+
+```bash
+az containerapp show -n tacotuesday-api -g rg-tacotuesday \
+  --query "properties.template.containers[0].env" -o table
+
+az containerapp identity show -n tacotuesday-api -g rg-tacotuesday -o json
+```
+
+If `ConnectionStrings__Leads` shows a `secretRef` instead of a value, the value lives in a
+secret — read it with `az containerapp secret show`. If `userAssignedIdentities` is empty,
+step 6 was never run.
+
+### 3. Confirm the grant exists in the database
+
+Connected to **`ttc-sqldb-prod`** as the Entra admin:
+
+```sql
+SELECT name, type_desc, authentication_type_desc
+FROM sys.database_principals
+WHERE name = 'id-tacotuesday';
+```
+
+No row means step 5 was never run — which is the single most common reason for this 503. The
+connection string is then correct and still cannot work: Entra issues the token, and SQL rejects
+a principal it has never heard of.

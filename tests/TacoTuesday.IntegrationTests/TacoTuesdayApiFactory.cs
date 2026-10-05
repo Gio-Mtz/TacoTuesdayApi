@@ -25,11 +25,20 @@ namespace TacoTuesday.IntegrationTests;
 /// different database. Holding it here is what makes the schema survive between requests, and
 /// what makes each test class get its own clean list.
 ///
-/// **Why nothing is removed from the container.** Program.cs registers the database only when
-/// a connection string is configured, and <c>Testing:AllowMissingDatabase</c> tells it there
-/// is deliberately none. So there is nothing to replace here — this adds, it does not
-/// override. That seam exists so that a test never has to guess at the shape of EF Core's
-/// internal service registrations, which change between versions.
+/// **Why nothing is removed from the container.** <c>Testing:AllowMissingDatabase</c> tells
+/// Program.cs that the caller brings its own database, so the host registers none and there is
+/// nothing to replace here — this adds, it does not override. That seam exists so that a test
+/// never has to guess at the shape of EF Core's internal service registrations, which change
+/// between versions.
+///
+/// ⚠️ This paragraph used to say the host "registers the database only when a connection string
+/// is configured". That was accurate and useless: sprint-0 committed a connection string to
+/// appsettings.Development.json on purpose, and Development is the environment this factory
+/// runs in — so the host registered SQL Server and this call registered SQLite on top. Two
+/// registrations of the module meant two readiness checks named <c>leads-db</c>, and a
+/// duplicate check name throws while the host is being built, which killed all six tests that
+/// boot a host. The host now keys off the flag and not off the string; see Program.cs. The
+/// invariant is pinned by <see cref="HealthCheckRegistrationTests"/>.
 /// </summary>
 public sealed class TacoTuesdayApiFactory : WebApplicationFactory<Program>
 {
