@@ -7,14 +7,6 @@ using TacoTuesday.SharedKernel;
 
 namespace TacoTuesday.UnitTests.Leads;
 
-/// <summary>
-/// The rules of the waiting list, without an HTTP pipeline in the way.
-///
-/// The validation cases are not paranoia: every one of them mirrors a rule the browser
-/// already enforces in <c>waitlist.ts</c>. If the two ever drift apart, a visitor fills in
-/// something the page accepts and the server rejects with no field highlighted — the worst
-/// failure mode a form has. These tests are what keeps the two halves honest.
-/// </summary>
 public sealed class CreateLeadHandlerTests
 {
     private static readonly DateTimeOffset Now = new(2026, 9, 29, 18, 30, 0, TimeSpan.Zero);
@@ -27,8 +19,6 @@ public sealed class CreateLeadHandlerTests
 
     private static CreateLeadHandler HandlerOver(ILeadStore store) =>
         new(store, new FixedClock(Now));
-
-    // ── The happy paths ───────────────────────────────────────────
 
     [Fact]
     public async Task A_valid_company_lead_is_accepted()
@@ -51,8 +41,6 @@ public sealed class CreateLeadHandlerTests
 
         result.IsSuccess.ShouldBeTrue();
     }
-
-    // ── Idempotency: the whole point of US-004 ────────────────────
 
     [Fact]
     public async Task The_same_address_twice_is_a_success_not_a_conflict()
@@ -94,8 +82,6 @@ public sealed class CreateLeadHandlerTests
         other.Value!.AlreadyRegistered.ShouldBeFalse();
         other.Value!.Id.ShouldNotBe(first.Value!.Id);
     }
-
-    // ── What actually gets stored ─────────────────────────────────
 
     [Fact]
     public async Task The_address_is_stored_as_typed_and_normalised_separately()
@@ -154,8 +140,6 @@ public sealed class CreateLeadHandlerTests
 
         store.Last!.CreatedAtUtc.ShouldBe(Now);
     }
-
-    // ── Validation: field by field, mirroring waitlist.ts ─────────
 
     [Theory]
     [InlineData(null)]
@@ -231,7 +215,7 @@ public sealed class CreateLeadHandlerTests
     [Fact]
     public async Task An_address_over_one_hundred_and_sixty_characters_is_rejected()
     {
-        var tooLong = new string('a', 160) + "@acme.com"; // 169 > MAX_EMAIL (160)
+        var tooLong = new string('a', 160) + "@acme.com";
 
         var result = await HandlerOver(new InMemoryLeadStore())
             .Handle(new CreateLeadCommand("company", "Ana", tooLong, "Acme", null), CancellationToken.None);
@@ -280,16 +264,11 @@ public sealed class CreateLeadHandlerTests
         result.Error.ValidationErrors!.Keys.ShouldContain(field);
     }
 
-    /// <summary>A clock that does not move, so a stored timestamp is an assertion.</summary>
     private sealed class FixedClock(DateTimeOffset now) : IClock
     {
         public DateTimeOffset UtcNow { get; } = now;
     }
 
-    /// <summary>
-    /// Same contract as the real store, but it keeps what it was handed so a test can ask
-    /// what was actually written — the one thing the response deliberately does not say.
-    /// </summary>
     private sealed class RecordingLeadStore : ILeadStore
     {
         private readonly Dictionary<string, Lead> _byNormalizedEmail = new(StringComparer.Ordinal);

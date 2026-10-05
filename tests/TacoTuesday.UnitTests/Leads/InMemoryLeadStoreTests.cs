@@ -5,15 +5,6 @@ using TacoTuesday.Modules.Leads.Persistence;
 
 namespace TacoTuesday.UnitTests.Leads;
 
-/// <summary>
-/// The store's one promise: an address goes on the list exactly once, even when two
-/// requests for it arrive at the same instant.
-///
-/// This matters more than it looks. The naive shape — check, then add — is a race with a
-/// window measured in microseconds, and the way you find out you wrote it is a duplicate
-/// row in production months later. <c>GetOrAdd</c> closes the window; this test is what
-/// says so out loud, and what will fail if somebody "simplifies" it back.
-/// </summary>
 public sealed class InMemoryLeadStoreTests
 {
     private static Lead NewLead(string email) => new(
