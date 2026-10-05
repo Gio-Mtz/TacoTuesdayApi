@@ -130,7 +130,23 @@ builder.Services.AddCandidatesModule();
 builder.Services.AddCompaniesModule();
 builder.Services.AddLeadsModule();
 
-if (!string.IsNullOrWhiteSpace(leadsConnectionString))
+// Register SQL Server only when THIS host is the one bringing the database.
+//
+// The first half of that condition is not decoration, and leaving it out cost six red tests:
+// `Testing:AllowMissingDatabase` means **the caller brings its own database**, not merely
+// "the value might be empty". The integration tests add SQLite in ConfigureTestServices,
+// which runs after this line — so whenever a connection string happened to be present, this
+// registered SQL Server first, the Leads module got registered twice, and its readiness check
+// `leads-db` was registered twice with it. A duplicate check name is a hard failure
+// (`ArgumentException: Duplicate health checks were registered with the name(s): leads-db`)
+// thrown while the host is being built, so all six tests that boot a host died before
+// reaching their first assertion — on a machine that was configured correctly.
+//
+// And the string is present on every machine that has done the local setup: sprint-0
+// committed one to appsettings.Development.json on purpose, and Development is the
+// environment WebApplicationFactory runs in. So the suite's outcome depended on a file that
+// differs per branch and per developer. Keying off the flag makes it depend on nothing.
+if (!allowMissingDatabase && !string.IsNullOrWhiteSpace(leadsConnectionString))
 {
     builder.Services.AddLeadsPersistence(options => options.UseSqlServer(
         leadsConnectionString,
