@@ -13,17 +13,12 @@ public sealed class ModuleBoundaryTests
     private static readonly Assembly CompaniesAssembly  = typeof(CompaniesModule).Assembly;
     private static readonly Assembly LeadsAssembly      = typeof(LeadsModule).Assembly;
 
-    /// <summary>
-    /// Every module, in one place. A new module added to the solution and forgotten here
-    /// is a module with no boundary test — so this array is the checklist.
-    /// </summary>
     private static readonly Assembly[] AllModules = [CandidatesAssembly, CompaniesAssembly, LeadsAssembly];
 
     private const string CandidatesRoot = "TacoTuesday.Modules.Candidates";
     private const string CompaniesRoot  = "TacoTuesday.Modules.Companies";
     private const string LeadsRoot      = "TacoTuesday.Modules.Leads";
 
-    /// <summary>Internals of a module are off-limits. Contracts are not.</summary>
     private static string[] InternalNamespacesOf(string moduleRoot) =>
     [
         $"{moduleRoot}.Domain",
@@ -94,10 +89,6 @@ public sealed class ModuleBoundaryTests
         }
     }
 
-    /// <summary>
-    /// Handlers orchestrate business logic. If one touches HttpContext it has stopped
-    /// being testable in isolation and has started being a controller in disguise.
-    /// </summary>
     [Fact]
     public void Handlers_must_not_depend_on_HttpContext()
     {
@@ -126,15 +117,6 @@ public sealed class ModuleBoundaryTests
         }
     }
 
-    /// <summary>
-    /// A module may know it lives on a relational database. It may not know WHICH one.
-    ///
-    /// This is the rule US-005 is built on: the Leads module owns the model and the mapping,
-    /// the host picks the provider (<c>LeadsModule.AddLeadsPersistence</c>), and that seam is
-    /// the only reason the store's tests can run the same code against SQLite and still have a
-    /// real unique index to violate. A <c>UseSqlServer</c> that drifts into a module would
-    /// silently take that away and every test in the suite would stay green.
-    /// </summary>
     [Fact]
     public void Modules_must_not_depend_on_a_database_provider()
     {

@@ -17,12 +17,6 @@ public sealed class HealthEndpointTests(TacoTuesdayApiFactory factory)
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
     }
 
-    /// <summary>
-    /// Readiness is a different question from liveness, and since US-005 it has a different
-    /// answer: it runs the `leads-db` check, so it is only OK while the database is reachable.
-    /// This test is what says the check is actually wired into /health/ready and not sitting
-    /// in the container unregistered.
-    /// </summary>
     [Fact]
     public async Task Readiness_endpoint_is_healthy_when_the_database_is_reachable()
     {

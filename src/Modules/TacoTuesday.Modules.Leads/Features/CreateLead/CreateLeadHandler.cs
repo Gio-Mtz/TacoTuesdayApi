@@ -6,24 +6,10 @@ using TacoTuesday.SharedKernel;
 
 namespace TacoTuesday.Modules.Leads.Features.CreateLead;
 
-/// <summary>
-/// Puts one address on the waiting list.
-///
-/// Two behaviours in here are contract, not implementation, and both are argued in
-/// ADR 0004:
-///
-/// 1. **Posting the same address twice succeeds.** It answers 200 with
-///    <c>alreadyRegistered: true</c>, never 409. The visitor did nothing wrong, and the
-///    UI is already written to say so.
-/// 2. **Validation mirrors the form field by field.** The browser check is a courtesy;
-///    this one is the actual rule. Anything can POST straight at the endpoint.
-/// </summary>
 public sealed partial class CreateLeadHandler(ILeadStore store, IClock clock)
 {
-    /// <summary>Longest value accepted in a single-line field. Mirrors MAX_SHORT in waitlist.ts.</summary>
     private const int MaxShort = 80;
 
-    /// <summary>Longest address accepted. Mirrors MAX_EMAIL in waitlist.ts. 254 is the RFC ceiling.</summary>
     private const int MaxEmail = 160;
 
     public async Task<Result<CreateLeadResponse>> Handle(CreateLeadCommand command, CancellationToken ct)
@@ -43,7 +29,6 @@ public sealed partial class CreateLeadHandler(ILeadStore store, IClock clock)
             return Result<CreateLeadResponse>.Invalid(ResultError.Validation(errors));
         }
 
-        // `kind` is non-null here: a null kind is the first thing Validate rejects.
         var isCompany = kind == LeadKind.Company;
 
         var lead = new Lead(
@@ -52,8 +37,7 @@ public sealed partial class CreateLeadHandler(ILeadStore store, IClock clock)
             Name: name,
             Email: email,
             NormalizedEmail: Normalize(email),
-            // The side that is on screen is the only side we keep. Without this, filling in
-            // "Acme", switching to candidato and submitting would file "Acme" as a job title.
+
             Company: isCompany ? company : null,
             Role: isCompany ? null : NullIfEmpty(role),
             CreatedAtUtc: clock.UtcNow);
@@ -64,13 +48,6 @@ public sealed partial class CreateLeadHandler(ILeadStore store, IClock clock)
             new CreateLeadResponse(registration.Id, registration.AlreadyRegistered));
     }
 
-    /// <summary>
-    /// The lowercase form of an address, and the only thing uniqueness is decided on.
-    ///
-    /// Invariant, not current-culture: with a Turkish locale on the server,
-    /// <c>"ISABEL@x.com".ToLower()</c> produces a dotless ı and the same person becomes two
-    /// leads depending on which machine took the request.
-    /// </summary>
     public static string Normalize(string email)
     {
         ArgumentNullException.ThrowIfNull(email);
@@ -120,8 +97,6 @@ public sealed partial class CreateLeadHandler(ILeadStore store, IClock clock)
             errors["email"] = ["email is not a valid address."];
         }
 
-        // `company` is only a field when the visitor is a company. Sending one as a
-        // candidate is not an error — it is ignored, exactly as the form ignores it.
         if (kind == LeadKind.Company)
         {
             if (string.IsNullOrEmpty(company))
@@ -143,17 +118,6 @@ public sealed partial class CreateLeadHandler(ILeadStore store, IClock clock)
 
     private static string? NullIfEmpty(string? value) => string.IsNullOrEmpty(value) ? null : value;
 
-    /// <summary>
-    /// Byte-for-byte the regex Angular's <c>Validators.email</c> uses.
-    ///
-    /// Copied rather than improved on purpose. If the server were stricter than the form,
-    /// a visitor would fill in an address the page accepts and get a 400 with no field
-    /// highlighted — the worst failure a form can have. If it were looser, the rule would
-    /// live in the browser, where anyone can turn it off.
-    ///
-    /// Source-generated: the pattern is compiled at build time, so there is no regex
-    /// parsing on the first request and no ReDoS surface from an interpreted backtracker.
-    /// </summary>
     [GeneratedRegex(@"^(?=.{1,254}$)(?=.{1,64}@)[a-zA-Z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-zA-Z0-9!#$%&'*+/=?^_`{|}~-]+)*@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$")]
     private static partial Regex EmailPattern();
 }

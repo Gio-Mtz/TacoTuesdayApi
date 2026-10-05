@@ -1,5 +1,5 @@
 namespace TacoTuesday.SharedKernel;
-/// <summary>A result with no payload.</summary>
+
 public readonly record struct Result
 {
     public readonly ResultStatus Status {get;}
@@ -17,7 +17,6 @@ public readonly record struct Result
     public static Result Forbidden(string message = "forbidden.") => new(ResultStatus.Forbidden, ResultError.Forbidden(message));
 }
 
-/// <summary>A result carrying a value on success.</summary>
 [SuppressMessage("Design", "CA1000:Do not declare static members on generic types",
     Justification = "Static factory methods are the point of the Result pattern. The BCL does the same " +
                     "(ImmutableArray<T>.Empty, EqualityComparer<T>.Default). The implicit conversion " +

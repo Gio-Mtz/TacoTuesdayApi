@@ -8,23 +8,6 @@ using TacoTuesday.Modules.Leads.Persistence;
 
 namespace TacoTuesday.UnitTests.Leads;
 
-/// <summary>
-/// <see cref="EfCoreLeadStore"/> against a real relational database.
-///
-/// **On SQLite, and that is the point.** The EF Core in-memory provider does not enforce
-/// unique indexes, so every test in this file would pass against a store with no constraint
-/// behind it — which is precisely the bug they exist to catch. SQLite enforces the index,
-/// raises a real <c>DbUpdateException</c>, and therefore exercises the same branch that Azure
-/// SQL will.
-///
-/// **What is not tested here, deliberately:** fifty writers going at the address at the same
-/// instant. Two connections to a SQLite <c>:memory:</c> database are two different databases,
-/// and a shared one serializes and starts answering "database is locked" — a test that fails
-/// at random is worse than a test that is not there. The guarantee under real concurrency is
-/// not in this class anyway: it is the unique index, and what these tests do prove is the
-/// branch that runs when the index fires. <c>InMemoryLeadStoreTests</c> keeps the fifty-way
-/// version where it can run honestly.
-/// </summary>
 public sealed class EfCoreLeadStoreTests : IAsyncLifetime, IDisposable
 {
     private readonly SqliteConnection _connection = new("DataSource=:memory:");
@@ -32,9 +15,6 @@ public sealed class EfCoreLeadStoreTests : IAsyncLifetime, IDisposable
 
     public async Task InitializeAsync()
     {
-        // The database lives for exactly as long as this connection is open. Close it and the
-        // schema, the rows and the index all go — which is why it is held by the fixture and
-        // every context below borrows it.
         await _connection.OpenAsync();
 
         _options = new DbContextOptionsBuilder<LeadsDbContext>()
@@ -47,17 +27,8 @@ public sealed class EfCoreLeadStoreTests : IAsyncLifetime, IDisposable
 
     public async Task DisposeAsync() => await _connection.DisposeAsync();
 
-    /// <summary>
-    /// Only here to satisfy CA1001: a type that holds a disposable field has to say so.
-    /// xUnit disposes through <see cref="DisposeAsync"/>; SqliteConnection tolerates both.
-    /// </summary>
     public void Dispose() => _connection.Dispose();
 
-    /// <summary>
-    /// A fresh context per call, like the scoped one a request gets. Sharing a single context
-    /// across two registrations would let the change tracker answer the second one from
-    /// memory and the database would never be asked.
-    /// </summary>
     private LeadsDbContext NewContext() => new(_options);
 
     private static Lead NewLead(string email, string? name = null) => new(
@@ -80,9 +51,6 @@ public sealed class EfCoreLeadStoreTests : IAsyncLifetime, IDisposable
 
         registration.AlreadyRegistered.ShouldBeFalse();
 
-        // The id the application generated, not one the database invented. `ValueGeneratedNever`
-        // is what keeps this true; drop it and SQL Server starts handing out NEWID() values,
-        // the UUID v7 ordering is gone and nobody notices until the index is fragmented.
         registration.Id.ShouldBe(lead.Id);
 
         await using var reader = NewContext();
@@ -101,9 +69,6 @@ public sealed class EfCoreLeadStoreTests : IAsyncLifetime, IDisposable
             await new EfCoreLeadStore(context).RegisterAsync(first, CancellationToken.None);
         }
 
-        // A different person object, a different generated id, the same address typed
-        // differently. This is the losing side of the race, and it is the whole contract:
-        // 200 with `alreadyRegistered: true` and the id that is actually on the list.
         var second = NewLead("ANA@ACME.COM", "Ana");
 
         await using var other = NewContext();
@@ -131,8 +96,6 @@ public sealed class EfCoreLeadStoreTests : IAsyncLifetime, IDisposable
         await using var reader = NewContext();
         var stored = await reader.Leads.SingleAsync(CancellationToken.None);
 
-        // Two columns on purpose: a confirmation mail should address somebody the way they
-        // wrote their own name, and uniqueness should not care how they wrote it.
         stored.Email.ShouldBe("Ana.Lopez@Acme.COM");
         stored.NormalizedEmail.ShouldBe("ana.lopez@acme.com");
     }
@@ -175,8 +138,6 @@ public sealed class EfCoreLeadStoreTests : IAsyncLifetime, IDisposable
             await new EfCoreLeadStore(context).RegisterAsync(candidate, CancellationToken.None);
         }
 
-        // Read straight out of the column, past EF's conversion. `Kind = 1` in a query window
-        // is a number somebody has to go look up; "Candidate" is not.
         await using var raw = _connection.CreateCommand();
         raw.CommandText = "SELECT Kind FROM Leads";
         var value = (string?)await raw.ExecuteScalarAsync(CancellationToken.None);

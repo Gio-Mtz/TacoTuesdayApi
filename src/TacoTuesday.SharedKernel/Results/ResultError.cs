@@ -1,9 +1,5 @@
 namespace TacoTuesday.SharedKernel;
 
-/// <summary>
-/// A machine-readable failure. <paramref name="Code"/> is for the client to switch on;
-/// <paramref name="Message"/> is for a human to read.
-/// </summary>
 public sealed record ResultError(string Code, string Message, IReadOnlyDictionary<string, string[]>? ValidationErrors = null)
 {
     public static ResultError NotFound(string message = "The requested resource was not found.") => new("NOT_FOUND", message);
