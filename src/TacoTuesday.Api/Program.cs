@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
+using TacoTuesday.Api.Configuration;
 using TacoTuesday.Infrastructure;
 using TacoTuesday.Migrations.SqlServer;
 using TacoTuesday.Modules.Candidates;
@@ -104,9 +105,14 @@ builder.Services.AddRateLimiter(options =>
 // a real unique index to violate. See ADR 0005.
 var leadsConnectionString = builder.Configuration.GetConnectionString("Leads");
 
-// Fail at boot, loudly, rather than at the first signup. A Container App with no connection
-// string configured is a misconfiguration, and the cheapest place to find out is a container
+// Fail at boot, loudly, rather than at the first signup. A Container App whose connection
+// string is unusable is a misconfiguration, and the cheapest place to find out is a container
 // that refuses to start — not a visitor who gets a 500 after typing their address in.
+//
+// TD-010: "unusable" used to mean "absent", and that was too narrow by exactly one case. A
+// malformed value is present, so it passed, so the app started and said `Application started`
+// — and that clean start was then read as proof the configuration was good while every signup
+// returned 500 for a week. The check now also parses the string. See LeadsConnectionString.
 //
 // The one opt-out is for the integration tests, which bring their own database in
 // ConfigureTestServices — that is, after this line has already run. It is a setting rather
@@ -116,12 +122,7 @@ var leadsConnectionString = builder.Configuration.GetConnectionString("Leads");
 // 500 on the first POST, from a container that started and should not have.
 var allowMissingDatabase = builder.Configuration.GetValue("Testing:AllowMissingDatabase", false);
 
-if (!allowMissingDatabase && string.IsNullOrWhiteSpace(leadsConnectionString))
-{
-    throw new InvalidOperationException(
-        "ConnectionStrings:Leads is not configured. Set it as an environment variable " +
-        "(ConnectionStrings__Leads) or as a Container Apps secret. See docs/database.md.");
-}
+LeadsConnectionString.ThrowIfUnusable(leadsConnectionString, allowMissingDatabase);
 
 // ── Modules ───────────────────────────────────────────────────────
 // The host knows each module by exactly one method. Nothing else.

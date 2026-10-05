@@ -162,9 +162,63 @@ variable.)
 
 It belongs in a Container Apps **secret**, not in `appsettings.json` and not in the image.
 
-**If it is missing, the app refuses to start**, with a message that says so. That is on
-purpose: the alternative is a container that starts, passes liveness, and throws a 500 at the
-first person who types their address into the form.
+**If it is missing, or if SqlClient cannot parse it, the app refuses to start**, with a message
+that says which of the two it was. That is on purpose: the alternative is a container that
+starts, passes liveness, and throws a 500 at the first person who types their address into the
+form.
+
+That second half was added in TD-010, and it was paid for. Until then the check only asked
+whether the value was *there*. A malformed value is there, so it passed, so the container
+started and logged `Application started` — and that clean start was read, across two work
+blocks, as evidence that the connection string was correct. It was not: SqlClient could not
+parse it, so every `SqlConnection` built from it threw before opening a socket. The visible
+symptoms were a 503 on `/health/ready` and a 500 on every signup, for a week.
+
+### When the app refuses to start saying the string cannot be parsed
+
+The message carries SqlClient's own words, and they end in a character position:
+
+```
+Format of the initialization string does not conform to specification starting at index 130.
+```
+
+**That index is the answer.** It is counted from 0, and it is where the parser gave up — so go
+look at that character. Three causes produce it, in the order they turn up in practice:
+
+1. **A value containing `;` or `=` that is not quoted.** Passwords, almost always. The `;` ends
+   the value early and the parser reads the rest of the password as the start of a keyword.
+   Wrap the value in single quotes: `Password='pw;word'`.
+2. **A newline or a stray quote copied in with the value** — common when the string is pasted
+   out of the portal, or set from a file that ends in a newline.
+3. **A `{placeholder}` from the portal's ADO.NET template left unreplaced**, such as
+   `User ID={your_username}`.
+
+To see the value that is actually deployed, and the character the index names:
+
+```bash
+az containerapp secret show -n tacotuesday-api -g <RG> --secret-name leads-db \
+  --query value -o tsv
+```
+
+To replace it, quote the whole thing in **single** quotes so the shell does not eat the `;`,
+and let the revision restart:
+
+```bash
+az containerapp secret set -n tacotuesday-api -g <RG> \
+  --secrets "leads-db=<the corrected connection string>"
+```
+
+Then confirm with `/health/ready` — **not** with the start-up banner, which says nothing about
+whether the database can be reached:
+
+```bash
+curl -i https://<fqdn>/health/ready     # 200 "Healthy" is the only answer that counts
+```
+
+⚠️ **When reading container logs to check this, compare the log's timestamp against the `date:`
+header of your own `curl`.** A log window that ends before the request cannot contain the
+request's error, and mistaking a start-up banner for the error window has cost this project two
+work blocks.
 
 ---
 
