@@ -1,3 +1,5 @@
+using System.Data.Common;
+
 using Microsoft.EntityFrameworkCore;
 
 using TacoTuesday.Modules.Leads.Domain;
@@ -23,11 +25,7 @@ public sealed class EfCoreLeadStore(LeadsDbContext db) : ILeadStore
         {
             db.Entry(lead).State = EntityState.Detached;
 
-            var existingId = await db.Leads
-                .AsNoTracking()
-                .Where(existing => existing.NormalizedEmail == lead.NormalizedEmail)
-                .Select(existing => (Guid?)existing.Id)
-                .FirstOrDefaultAsync(ct);
+            var existingId = await FindIdByNormalizedEmailOrNullAsync(lead.NormalizedEmail, ct);
 
             if (existingId is null)
             {
@@ -35,6 +33,26 @@ public sealed class EfCoreLeadStore(LeadsDbContext db) : ILeadStore
             }
 
             return new LeadRegistration(existingId.Value, AlreadyRegistered: true);
+        }
+    }
+
+    private async Task<Guid?> FindIdByNormalizedEmailOrNullAsync(string normalizedEmail, CancellationToken ct)
+    {
+        try
+        {
+            return await db.Leads
+                .AsNoTracking()
+                .Where(existing => existing.NormalizedEmail == normalizedEmail)
+                .Select(existing => (Guid?)existing.Id)
+                .FirstOrDefaultAsync(ct);
+        }
+        catch (DbException)
+        {
+            return null;
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
         }
     }
 }
