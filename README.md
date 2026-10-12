@@ -29,6 +29,10 @@ az acr build --registry ttcacrgiomtz --image tacotuesday-api:v2 --file Dockerfil
 az containerapp update --name tacotuesday-api --resource-group rg-tacotuesday --image ttcacrgiomtz.azurecr.io/tacotuesday-api:v2
 ```
 
+> Before and after running that line, read [`docs/deployment-runbook.md`](docs/deployment-runbook.md).
+> It is four checks long, and it covers the one setting that makes this API answer `Healthy` on
+> both probes while losing every signup.
+
 ### Run the container
 
 ```bash
