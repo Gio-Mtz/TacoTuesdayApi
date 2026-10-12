@@ -110,38 +110,86 @@ RG=rg-tacotuesday
 APP=tacotuesday-api
 ```
 
-**a. The flag must not be in the template.** This should print nothing at all:
+### Read this first: every check below prints a number or a list, never silence
+
+That is deliberate, and it is the **second** version of this section. The first one asked you to
+read an *empty line* as the answer, and on 12-Oct-2026 that cost a round trip: the flag check
+printed nothing, and "nothing" is also what you see when the query is wrong, when the resource
+group is wrong, or when the container has no environment variables at all. Worse, an empty line
+meant **"good"** in the old check (a) and **"stop the deploy"** in the old check (b) — the same
+observable, two opposite verdicts, in two commands that looked alike. A procedure you run in the
+middle of a deployment cannot ask you to tell those apart by eye.
+
+Two traps that produced it, both still worth knowing:
+
+- **`containers[0]`, not `containers[]`.** The flattening form collapses two levels, so "no
+  matches" and "no container" come out looking the same.
+- **`az containerapp show` returns the template of the latest revision *defined*, not the one
+  currently serving traffic.** Step (d) covers that.
+
+**a. Inventory first — this is the auto-check.** It must print at least
+`ConnectionStrings__Leads`, because the app cannot boot without it (§1). **If this prints nothing
+at all, your command is wrong — not the deployment.** Fix it before you read any verdict below.
 
 ```bash
 az containerapp show -n $APP -g $RG \
-  --query "properties.template.containers[].env[?contains(name,'AllowMissingDatabase')]" -o tsv
+  --query "properties.template.containers[0].env[].name | sort(@)" -o tsv
 ```
 
-Any output here is a stop-the-deploy. So is any output from this, which catches the colon
-form and a `Testing` section arriving some other way:
+Known-good baseline, measured in production on 12-Oct-2026 — exactly these four names:
+
+```
+ConnectionStrings__Leads
+Cors__AllowedOrigins__0
+Cors__AllowedOrigins__1
+Cors__AllowedOrigins__2
+```
+
+A fifth name deserves a look before you ship. A *missing* `Cors__AllowedOrigins__*` is the TD-022
+failure: the API starts, every probe stays green, and only the browser breaks.
+
+**b. The flag must not be in the template. This prints `0`.**
 
 ```bash
 az containerapp show -n $APP -g $RG \
-  --query "properties.template.containers[].env[?starts_with(name,'Testing')].name" -o tsv
+  --query "length(properties.template.containers[0].env[?starts_with(name, 'Testing')])" -o tsv
 ```
 
-**b. The connection string must be there.** Name only — never print the value:
+`0` is the only acceptable answer. `1` or more is a stop-the-deploy. Matching the **prefix**
+rather than the full name is what makes this catch both spellings — `Testing__AllowMissingDatabase`
+and `Testing:AllowMissingDatabase` — plus anything else that arrives under a `Testing` section.
+**An empty line is not `0`:** it means the command failed, so go back to (a).
+
+**c. The connection string must be there. This prints `1`.**
 
 ```bash
 az containerapp show -n $APP -g $RG \
-  --query "properties.template.containers[].env[?name=='ConnectionStrings__Leads'].name" -o tsv
+  --query "length(properties.template.containers[0].env[?name == 'ConnectionStrings__Leads'])" -o tsv
 ```
 
-Empty output is also a stop: with the flag correctly absent, a missing connection string makes
-the app refuse to boot (`Program.cs:82`), which is the designed behaviour and still a failed
-deployment. See [docs/database.md](database.md#telling-the-app-where-the-database-is).
+`0` is a stop: with the flag correctly absent, a missing connection string makes the app refuse to
+boot (`Program.cs:82`), which is the designed behaviour and still a failed deployment. See
+[docs/database.md](database.md#telling-the-app-where-the-database-is). Only the name is ever
+printed — the value does not reach your terminal.
 
-**c. CI is green on the commit you are about to ship.** All three jobs, including
-`Container image builds` — the job that exists because a Dockerfile that no longer builds
-kept a three-week-old image in production while both probes answered Healthy.
+**d. Confirm what is actually serving.** (a) to (c) read the latest revision *defined*. After a
+rollback, or when a new revision failed to start, that is not the revision answering requests:
 
-**d. The image tag is the one you just built.** `--image ...:v2` twice in a row deploys the
-old image and the revision looks perfectly fine.
+```bash
+az containerapp revision list -n $APP -g $RG \
+  --query "[].{rev:name, weight:properties.trafficWeight, active:properties.active}" -o table
+```
+
+If the row carrying the traffic weight is not the newest one, re-run (a) to (c) against it with
+`az containerapp revision show -n $APP -g $RG --revision <rev>` — the template sits at the same
+path, `properties.template.containers[0].env[]`.
+
+**e. CI is green on the commit you are about to ship.** All three jobs, including
+`Container image builds` — the job that exists because a Dockerfile that no longer builds kept a
+three-week-old image in production while both probes answered Healthy.
+
+**f. The image tag is the one you just built.** `--image ...:v2` twice in a row deploys the old
+image and the revision looks perfectly fine.
 
 ---
 
@@ -186,11 +234,16 @@ az containerapp update -n $APP -g $RG \
   --remove-env-vars Testing__AllowMissingDatabase
 ```
 
+**Remove the name step 2a actually printed, not the one above.** The check in 2b matches the
+`Testing` *prefix*, so it fires on `Testing__AllowMissingDatabase` and on
+`Testing:AllowMissingDatabase` alike — but `--remove-env-vars` takes an exact name, and removing
+a spelling that is not there succeeds while changing nothing. Read the name off 2a and pass that.
+
 **Confirm the flag name before you lean on it** — `az containerapp update --help | grep env`
 takes a second, and this line was written from the CLI's documented surface, not run. If
 `--remove-env-vars` is not there, `--replace-env-vars` with the full set you *do* want works
 instead. Do **not** reach for `--remove-all-env-vars`: it would take `ConnectionStrings__Leads`
-with it and you would trade this failure for the one in section 2b.
+with it and you would trade this failure for the one in section 2c.
 
 `--remove-env-vars` is a change to the container **template**, so it creates a new revision
 and the new replicas start without it. That matters: a change to a *secret* does **not** create
